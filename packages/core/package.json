@@ -33,7 +33,7 @@
     "@types/streetwriters__showdown": "npm:@types/showdown@^2.0.6",
     "@types/unist": "^3.0.3",
     "@types/ws": "^8.5.5",
-    "@vitest/coverage-v8": "2.1.8",
+    "@vitest/coverage-v8": "4.0.16",
     "abortcontroller-polyfill": "^1.7.3",
     "better-sqlite3-multiple-ciphers": "11.5.0",
     "bson-objectid": "^2.0.4",
@@ -43,12 +43,12 @@
     "hash-wasm": "4.12.0",
     "isomorphic-fetch": "^3.0.0",
     "mockdate": "^3.0.5",
-    "nanoid": "5.0.7",
+    "nanoid": "5.0.9",
     "otplib": "^12.0.1",
     "refractor": "^4.8.1",
     "vitest": "2.1.8",
     "vitest-fetch-mock": "^0.2.2",
-    "ws": "^8.13.0"
+    "ws": "^8.18.3"
   },
   "scripts": {
     "postinstall": "patch-package",
@@ -78,7 +78,7 @@
     "fuzzyjs": "^5.0.1",
     "html-to-text": "^9.0.5",
     "htmlparser2": "^8.0.1",
-    "katex": "0.16.11",
+    "katex": "0.16.21",
     "linkedom": "^0.14.17",
     "liqe": "^1.13.0",
     "mime-db": "^1.53.0",
