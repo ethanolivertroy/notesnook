@@ -23,7 +23,7 @@
     "@notesnook/common": "file:../common"
   },
   "devDependencies": {
-    "@playwright/test": "^1.37.1",
+    "@playwright/test": "^1.57.0",
     "@types/react": "^18.2.39",
     "@types/react-dom": "^18.2.17",
     "react-scripts": "^5.0.1"
