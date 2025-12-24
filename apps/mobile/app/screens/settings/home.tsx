@@ -17,10 +17,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import { strings } from "@notesnook/intl";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React from "react";
-import { View } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
 import DelayLayout from "../../components/delay-layout";
 import { Header } from "../../components/header";
 import { useNavigationFocus } from "../../hooks/use-navigation-focus";
@@ -29,7 +28,7 @@ import { SectionGroup } from "./section-group";
 import { settingsGroups } from "./settings-data";
 import { RouteParams, SettingSection } from "./types";
 import SettingsUserSection from "./user-section";
-import { strings } from "@notesnook/intl";
+import { LegendList } from "@legendapp/list";
 
 const keyExtractor = (item: SettingSection) => item.id;
 
@@ -56,16 +55,14 @@ const Home = ({
       <Header
         renderedInRoute="Settings"
         title={strings.routes.Settings()}
-        canGoBack={false}
+        canGoBack={true}
+        hasSearch={false}
         id="Settings"
       />
-      <DelayLayout delay={300} type="settings">
-        <Animated.FlatList
-          entering={FadeInDown}
+      <DelayLayout type="settings">
+        <LegendList
           data={settingsGroups}
-          windowSize={1}
           keyExtractor={keyExtractor}
-          ListFooterComponent={<View style={{ height: 200 }} />}
           renderItem={renderItem}
         />
       </DelayLayout>

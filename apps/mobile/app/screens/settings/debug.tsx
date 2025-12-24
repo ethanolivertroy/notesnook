@@ -35,6 +35,7 @@ import Paragraph from "../../components/ui/typography/paragraph";
 import useTimer from "../../hooks/use-timer";
 import { ToastManager } from "../../services/event-manager";
 import { hexToRGBA } from "../../utils/colors";
+import { DefaultAppStyles } from "../../utils/styles";
 
 export default function DebugLogs() {
   const { colors } = useThemeColors();
@@ -74,15 +75,15 @@ export default function DebugLogs() {
         item.level === LogLevel.Error || item.level === LogLevel.Fatal
           ? hexToRGBA(colors.error.paragraph, 0.2)
           : item.level === LogLevel.Warn
-          ? hexToRGBA(colors.static.orange, 0.2)
-          : "transparent";
+            ? hexToRGBA(colors.static.orange, 0.2)
+            : "transparent";
 
       const color =
         item.level === LogLevel.Error || item.level === LogLevel.Fatal
           ? colors.error.paragraph
           : item.level === LogLevel.Warn
-          ? colors.static.black
-          : colors.primary.paragraph;
+            ? colors.static.black
+            : colors.primary.paragraph;
 
       return !item ? null : (
         <TouchableOpacity
@@ -96,8 +97,8 @@ export default function DebugLogs() {
             });
           }}
           style={{
-            paddingHorizontal: 12,
-            paddingVertical: 12,
+            paddingHorizontal: DefaultAppStyles.GAP,
+            paddingVertical: DefaultAppStyles.GAP_VERTICAL,
             backgroundColor: background,
             flexShrink: 1,
             borderBottomWidth: 1,
@@ -119,7 +120,6 @@ export default function DebugLogs() {
       );
     },
     [
-      colors.secondary.background,
       colors.primary.paragraph,
       colors.error.paragraph,
       colors.static.black,
@@ -185,7 +185,7 @@ export default function DebugLogs() {
       paragraph: strings.clearLogsConfirmation(currentLog.key),
       negativeText: strings.cancel(),
       positiveText: strings.clear(),
-      positivePress: () => {
+      positivePress: async () => {
         const index = logs.findIndex((l) => (l.key = currentLog.key));
         logManager?.delete(currentLog.key);
         if (logs.length > 1) {
@@ -209,7 +209,7 @@ export default function DebugLogs() {
     >
       <View
         style={{
-          padding: 12
+          padding: DefaultAppStyles.GAP
         }}
       >
         <Notice text={strings.debugNotice()} type="information" />
@@ -221,8 +221,8 @@ export default function DebugLogs() {
           ListHeaderComponent={
             <View
               style={{
-                paddingHorizontal: 12,
-                marginBottom: 10,
+                paddingHorizontal: DefaultAppStyles.GAP,
+                marginBottom: DefaultAppStyles.GAP_VERTICAL,
                 flexDirection: "row",
                 alignItems: "center",
                 backgroundColor: colors.primary.background,

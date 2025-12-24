@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { RefObject, useEffect, useRef } from "react";
 import { Platform } from "react-native";
+//@ts-ignore
 import RNTooltips from "react-native-tooltips";
 import { useThemeColors } from "@notesnook/theme";
 import {
@@ -52,7 +53,7 @@ export const hideAllTooltips = async () => {
  */
 const useTooltip = () => {
   const { colors, isDark } = useThemeColors();
-  const parent = useRef();
+  const parent = useRef(undefined);
   const keyboard = useKeyboard();
 
   useEffect(() => {

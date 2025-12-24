@@ -38,6 +38,7 @@ import RNFetchBlob from "react-native-blob-util";
 import Share from "react-native-share";
 import useGlobalSafeAreaInsets from "../../hooks/use-global-safe-area-insets";
 import { useSettingStore } from "../../stores/use-setting-store";
+import { DefaultAppStyles } from "../../utils/styles";
 
 const ImagePreview = () => {
   const { colors } = useThemeColors("dialog");
@@ -45,7 +46,7 @@ const ImagePreview = () => {
   const [visible, setVisible] = useState(false);
   const [image, setImage] = useState<string>();
   const [loading, setLoading] = useState(false);
-  const imageRef = useRef<ImageAttributes>();
+  const imageRef = useRef<ImageAttributes>(null);
   const insets = useGlobalSafeAreaInsets();
   const [showHeader, setShowHeader] = useState(true);
 
@@ -124,7 +125,7 @@ const ImagePreview = () => {
             justifyContent: "flex-end",
             alignItems: "center",
             height: 50,
-            paddingHorizontal: 12,
+            paddingHorizontal: DefaultAppStyles.GAP,
             gap: 10
           }}
         >

@@ -18,8 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { hashNavigate } from ".";
-import { defineRoutes } from "./types";
-import { useEditorStore } from "../stores/editor-store";
+import { defineHashRoutes } from "./types";
 import {
   AddNotebookDialog,
   EditNotebookDialog
@@ -34,8 +33,9 @@ import {
 import { FeatureDialog } from "../dialogs/feature-dialog";
 import { CreateTagDialog } from "../dialogs/item-dialog";
 import { OnboardingDialog } from "../dialogs/onboarding-dialog";
+import { isSectionKey, SectionKeys } from "../dialogs/settings/types";
 
-const hashroutes = defineRoutes({
+const hashroutes = defineHashRoutes({
   "/": () => {},
   "/email/verify": () => {
     EmailVerificationDialog.show({}).then(afterAction);
@@ -55,32 +55,25 @@ const hashroutes = defineRoutes({
   "/tags/create": () => {
     CreateTagDialog.show().then(afterAction);
   },
-  "/notes/:noteId/create": ({ noteId }) => {
-    useEditorStore.getState().openSession(noteId);
-  },
-  "/notes/:noteId/edit": ({ noteId }) => {
-    useEditorStore.getState().openSession(noteId);
-  },
   "/buy": () => {
     BuyDialog.show({}).then(afterAction);
   },
   "/buy/:code": ({ code }: { code: string }) => {
-    BuyDialog.show({ couponCode: code, plan: "monthly" }).then(afterAction);
-  },
-  "/buy/:plan/:code": ({ plan, code }) => {
-    BuyDialog.show({
-      plan: plan === "monthly" ? "monthly" : "yearly",
-      couponCode: code
-    }).then(afterAction);
+    BuyDialog.show({ couponCode: code }).then(afterAction);
   },
   "/welcome": () => {
-    OnboardingDialog.show({ type: "new" })?.then(afterAction);
+    OnboardingDialog.show({})?.then(afterAction);
   },
   "/confirmed": () => {
     FeatureDialog.show({ featureName: "confirmed" }).then(afterAction);
   },
   "/settings": () => {
     SettingsDialog.show({}).then(afterAction);
+  },
+  "/settings/:section": ({ section }) => {
+    SettingsDialog.show(
+      isSectionKey(section) ? { activeSection: section as SectionKeys } : {}
+    ).then(afterAction);
   }
 });
 

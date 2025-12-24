@@ -18,7 +18,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { formatBytes } from "@notesnook/common";
-import { User } from "@notesnook/core";
+import {
+  SubscriptionPlan,
+  SubscriptionProvider,
+  SubscriptionStatus,
+  User
+} from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import notifee from "@notifee/react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
@@ -27,19 +32,14 @@ import React from "react";
 import { Appearance, Linking, Platform } from "react-native";
 import { getVersion } from "react-native-device-info";
 import * as RNIap from "react-native-iap";
+//@ts-ignore
 import { enabled } from "react-native-privacy-snapshot";
 import ScreenGuardModule from "react-native-screenguard";
 import { DatabaseLogger, db } from "../../common/database";
 import filesystem from "../../common/filesystem";
-import { ChangePassword } from "../../components/auth/change-password";
 import { presentDialog } from "../../components/dialog/functions";
 import { AppLockPassword } from "../../components/dialogs/applock-password";
-import {
-  endProgress,
-  startProgress,
-  updateProgress
-} from "../../components/dialogs/progress";
-import { ChangeEmail } from "../../components/sheets/change-email";
+import { endProgress, startProgress } from "../../components/dialogs/progress";
 import ExportNotesSheet from "../../components/sheets/export-notes";
 import { Issue } from "../../components/sheets/github/issue";
 import { Progress } from "../../components/sheets/progress";
@@ -62,17 +62,13 @@ import SettingsService from "../../services/settings";
 import Sync from "../../services/sync";
 import { useThemeStore } from "../../stores/use-theme-store";
 import { useUserStore } from "../../stores/use-user-store";
-import { SUBSCRIPTION_STATUS } from "../../utils/constants";
-import {
-  eCloseSheet,
-  eCloseSimpleDialog,
-  eOpenRecoveryKeyDialog
-} from "../../utils/events";
+import { eCloseSheet, eOpenRecoveryKeyDialog } from "../../utils/events";
 import { NotesnookModule } from "../../utils/notesnook-module";
 import { sleep } from "../../utils/time";
 import { MFARecoveryCodes, MFASheet } from "./2fa";
 import { useDragState } from "./editor/state";
 import { verifyUser, verifyUserWithApplock } from "./functions";
+import { logoutUser } from "./logout";
 import { SettingSection } from "./types";
 import { getTimeLeft } from "./user-section";
 
@@ -86,51 +82,95 @@ export const settingsGroups: SettingSection[] = [
       {
         id: "subscription-status",
         useHook: () => useUserStore((state) => state.user),
-        hidden: (current) => !current,
-        name: (current) => {
+        hidden: (current) => {
           const user = current as User;
-          const isBasic = user.subscription?.type === SUBSCRIPTION_STATUS.BASIC;
-          const isTrial = user.subscription?.type === SUBSCRIPTION_STATUS.TRIAL;
-          return isBasic || !user.subscription?.type
-            ? strings.subscribeToPro()
-            : isTrial
-            ? strings.trialStarted()
-            : strings.subDetails();
+          return (
+            !user ||
+            !user.subscription ||
+            user.subscription.provider === undefined ||
+            !strings.subscriptionProviderInfo[user?.subscription?.provider] ||
+            user.subscription?.plan === SubscriptionPlan.FREE
+          );
         },
-        type: "component",
-        component: "subscription",
-        icon: "crown",
+        name: (current) => {
+          const user = (current as User) || useUserStore.getState().user;
+          return (
+            strings.subscriptionProviderInfo[
+              user?.subscription?.provider
+            ]?.title() || `Unknown provider id: ${user?.subscription?.provider}`
+          );
+        },
+        icon: "credit-card",
+        modifer: () => {
+          const user = useUserStore.getState().user;
+          if (!user) return;
+          const subscriptionProviderInfo =
+            strings.subscriptionProviderInfo[user?.subscription?.provider];
+
+          if (!subscriptionProviderInfo) return;
+
+          const isCurrentPlatform =
+            (user.subscription?.provider === SubscriptionProvider.APPLE &&
+              Platform.OS === "ios") ||
+            (user.subscription?.provider === SubscriptionProvider.GOOGLE &&
+              Platform.OS === "android");
+
+          if (
+            (user.subscription?.provider === SubscriptionProvider.GOOGLE ||
+              user.subscription?.provider === SubscriptionProvider.APPLE) &&
+            isCurrentPlatform &&
+            user?.subscription?.productId
+          ) {
+            RNIap.deepLinkToSubscriptions({
+              sku: user?.subscription.productId
+            });
+          } else {
+            presentSheet({
+              title: subscriptionProviderInfo.title(),
+              paragraph: subscriptionProviderInfo.desc()
+            });
+          }
+        },
         description: (current) => {
           const user = current as User;
+          if (!user) return strings.neverHesitate();
           const subscriptionDaysLeft =
-            user &&
-            getTimeLeft(
-              parseInt(user.subscription?.expiry as unknown as string)
-            );
+            user && getTimeLeft(user.subscription?.expiry);
           const expiryDate = dayjs(user?.subscription?.expiry).format(
-            "MMMM D, YYYY"
+            "dddd, MMMM D, YYYY h:mm A"
           );
           const startDate = dayjs(user?.subscription?.start).format(
-            "MMMM D, YYYY"
+            "dddd, MMMM D, YYYY h:mm A"
           );
 
-          if (user.subscription.provider === 4) {
-            return strings.subEndsOn(expiryDate);
+          if (
+            user.subscription?.plan !== SubscriptionPlan.FREE &&
+            user.subscription?.productId
+          ) {
+            const status = user.subscription?.status;
+            return status === SubscriptionStatus.TRIAL
+              ? strings.trialEndsOn(
+                  dayjs(user?.subscription?.start)
+                    .add(
+                      user?.subscription?.productId?.includes("monthly")
+                        ? 7
+                        : 14
+                    )
+                    .format("dddd, MMMM D, YYYY h:mm A")
+                )
+              : status === SubscriptionStatus.ACTIVE
+                ? strings.subRenewOn(expiryDate)
+                : status === SubscriptionStatus.CANCELED ||
+                    status === SubscriptionStatus.PAUSED
+                  ? strings.subEndsOn(expiryDate)
+                  : status === SubscriptionStatus.EXPIRED
+                    ? subscriptionDaysLeft.time < -3
+                      ? strings.subEnded()
+                      : strings.accountDowngradedIn(3)
+                    : strings.neverHesitate();
           }
 
-          return user.subscription?.type === 2
-            ? strings.signedUpOn(startDate)
-            : user.subscription?.type === 1
-            ? strings.trialEndsOn(expiryDate)
-            : user.subscription?.type === 6
-            ? subscriptionDaysLeft.time < -3
-              ? strings.subEnded()
-              : strings.accountDowngradedIn(3)
-            : user.subscription?.type === 7
-            ? strings.subEndsOn(expiryDate)
-            : user.subscription?.type === 5
-            ? strings.subRenewOn(expiryDate)
-            : strings.neverHesitate();
+          return strings.neverHesitate();
         }
       },
       {
@@ -142,9 +182,7 @@ export const settingsGroups: SettingSection[] = [
         },
         useHook: () =>
           useUserStore(
-            (state) =>
-              state.user?.subscription.type == SUBSCRIPTION_STATUS.TRIAL ||
-              state.user?.subscription.type == SUBSCRIPTION_STATUS.BASIC
+            (state) => state.user?.subscription?.plan === SubscriptionPlan.FREE
           ),
         icon: "gift",
         modifer: () => {
@@ -233,7 +271,8 @@ export const settingsGroups: SettingSection[] = [
                 eSendEvent(eOpenRecoveryKeyDialog);
               });
             },
-            description: strings.saveDataRecoveryKeyDesc()
+            description: strings.saveDataRecoveryKeyDesc(),
+            icon: "key"
           },
           {
             id: "manage-attachments",
@@ -247,18 +286,18 @@ export const settingsGroups: SettingSection[] = [
           {
             id: "change-password",
             name: strings.changePassword(),
-            modifer: async () => {
-              ChangePassword.present();
-            },
-            description: strings.changePasswordDesc()
+            type: "screen",
+            description: strings.changePasswordDesc(),
+            component: "change-password",
+            icon: "form-textbox-password"
           },
           {
             id: "change-email",
             name: strings.changeEmail(),
-            modifer: async () => {
-              ChangeEmail.present();
-            },
-            description: strings.changeEmailDesc()
+            type: "screen",
+            component: "change-email",
+            description: strings.changeEmailDesc(),
+            icon: "at"
           },
           {
             id: "2fa-settings",
@@ -411,89 +450,7 @@ export const settingsGroups: SettingSection[] = [
             name: strings.logout(),
             description: strings.logoutWarnin(),
             icon: "logout",
-            modifer: async () => {
-              const hasUnsyncedChanges = await db.hasUnsyncedChanges();
-              presentDialog({
-                title: strings.logout(),
-                paragraph: strings.logoutConfirmation(),
-                positiveText: strings.logout(),
-                check: {
-                  info: strings.backupDataBeforeLogout(),
-                  defaultValue: true
-                },
-                notice: hasUnsyncedChanges
-                  ? {
-                      text: strings.unsyncedChangesWarning(),
-                      type: "alert"
-                    }
-                  : undefined,
-                positivePress: async (_, takeBackup) => {
-                  eSendEvent(eCloseSimpleDialog);
-                  setTimeout(async () => {
-                    try {
-                      startProgress({
-                        fillBackground: true,
-                        title: strings.loggingOut(),
-                        canHideProgress: true,
-                        paragraph: strings.loggingOutDesc()
-                      });
-
-                      Navigation.navigate("Notes");
-
-                      if (takeBackup) {
-                        updateProgress({
-                          progress: strings.backingUpData()
-                        });
-
-                        try {
-                          const result = await BackupService.run(
-                            false,
-                            "local",
-                            "partial"
-                          );
-                          if (result?.error) throw result.error as Error;
-                        } catch (e) {
-                          DatabaseLogger.error(e);
-                          const error = e;
-                          const canLogout = await new Promise((resolve) => {
-                            presentDialog({
-                              context: "local",
-                              title: strings.failedToTakeBackup(),
-                              paragraph: `${
-                                (error as Error).message
-                              }. ${strings.failedToTakeBackupMessage()}?`,
-                              positiveText: strings.yes(),
-                              negativeText: strings.no(),
-                              positivePress: () => {
-                                resolve(true);
-                              },
-                              onClose: () => {
-                                resolve(false);
-                              }
-                            });
-                          });
-                          if (!canLogout) {
-                            endProgress();
-                            return;
-                          }
-                        }
-                      }
-
-                      updateProgress({
-                        progress: strings.loggingOut()
-                      });
-
-                      await db.user?.logout();
-                      endProgress();
-                    } catch (e) {
-                      DatabaseLogger.error(e);
-                      ToastManager.error(e as Error, strings.logoutError());
-                      endProgress();
-                    }
-                  }, 300);
-                }
-              });
-            }
+            modifer: logoutUser
           },
           {
             id: "delete-account",
@@ -508,6 +465,7 @@ export const settingsGroups: SettingSection[] = [
                 paragraph: strings.deleteAccountDesc(),
                 positiveType: "errorShade",
                 input: true,
+                secureTextEntry: true,
                 inputPlaceholder: strings.enterAccountPassword(),
                 positiveText: strings.delete(),
                 positivePress: async (value) => {
@@ -515,16 +473,28 @@ export const settingsGroups: SettingSection[] = [
                     const verified = await db.user?.verifyPassword(value);
                     if (verified) {
                       setTimeout(async () => {
-                        startProgress({
-                          title: "Deleting account",
-                          paragraph: "Please wait while we delete your account"
-                        });
-                        Navigation.navigate("Notes");
-                        await db.user?.deleteUser(value);
-                        await BiometricService.resetCredentials();
-                        SettingsService.set({
-                          introCompleted: true
-                        });
+                        try {
+                          startProgress({
+                            title: "Deleting account",
+                            paragraph:
+                              "Please wait while we delete your account"
+                          });
+                          await db.user?.deleteUser(value);
+                          DatabaseLogger.info("User account deleted");
+                          Navigation.navigate("Notes");
+                          await BiometricService.resetCredentials();
+                          SettingsService.set({
+                            introCompleted: true
+                          });
+                        } catch (e) {
+                          endProgress();
+                          DatabaseLogger.error(e);
+                          ToastManager.error(
+                            e as Error,
+                            strings.failedToDeleteAccount(),
+                            "global"
+                          );
+                        }
                       }, 300);
                     } else {
                       ToastManager.show({
@@ -533,11 +503,7 @@ export const settingsGroups: SettingSection[] = [
                         context: "global"
                       });
                     }
-
-                    endProgress();
                   } catch (e) {
-                    endProgress();
-
                     ToastManager.error(
                       e as Error,
                       strings.failedToDeleteAccount(),
@@ -560,10 +526,12 @@ export const settingsGroups: SettingSection[] = [
         sections: [
           {
             id: "offline-mode",
+            icon: "download-multiple",
             name: strings.fullOfflineMode(),
             description: strings.fullOfflineModeDesc(),
             type: "switch",
             property: "offlineMode",
+            featureId: "fullOfflineMode",
             modifer: () => {
               const current = SettingsService.get().offlineMode;
               if (current) {
@@ -571,11 +539,9 @@ export const settingsGroups: SettingSection[] = [
                 db.fs().cancel("offline-mode");
                 return;
               }
-              PremiumService.verify(() => {
-                SettingsService.setProperty("offlineMode", true);
-                db.attachments.cacheAttachments().catch(() => {
-                  /* empty */
-                });
+              SettingsService.setProperty("offlineMode", true);
+              db.attachments.cacheAttachments().catch(() => {
+                /* empty */
               });
             }
           },
@@ -584,21 +550,26 @@ export const settingsGroups: SettingSection[] = [
             name: strings.disableAutoSync(),
             description: strings.disableAutoSyncDesc(),
             type: "switch",
-            property: "disableAutoSync"
+            property: "disableAutoSync",
+            featureId: "syncControls",
+            icon: "sync-off"
           },
           {
             id: "disable-realtime-sync",
             name: strings.disableRealtimeSync(),
             description: strings.disableRealtimeSyncDesc(),
             type: "switch",
-            property: "disableRealtimeSync"
+            property: "disableRealtimeSync",
+            featureId: "syncControls"
           },
           {
             id: "disable-sync",
             name: strings.disableSync(),
             description: strings.disableSyncDesc(),
             type: "switch",
-            property: "disableSync"
+            property: "disableSync",
+            featureId: "syncControls",
+            icon: "cloud-off-outline"
           },
           {
             id: "background-sync",
@@ -606,6 +577,7 @@ export const settingsGroups: SettingSection[] = [
             description: strings.backgroundSyncDesc(),
             type: "switch",
             property: "backgroundSync",
+            icon: "cloud-upload-outline",
             onChange: (value) => {
               if (value) {
                 BackgroundSync.start();
@@ -618,6 +590,7 @@ export const settingsGroups: SettingSection[] = [
             id: "pull-sync",
             name: strings.forcePullChanges(),
             description: strings.forcePullChangesDesc(),
+            icon: "download",
             modifer: () => {
               presentDialog({
                 title: strings.forcePullChanges(),
@@ -639,6 +612,7 @@ export const settingsGroups: SettingSection[] = [
             id: "push-sync",
             name: strings.forcePushChanges(),
             description: strings.forcePushChangesDesc(),
+            icon: "upload",
             modifer: () => {
               presentDialog({
                 title: strings.forcePushChanges(),
@@ -657,6 +631,14 @@ export const settingsGroups: SettingSection[] = [
             }
           }
         ]
+      },
+      {
+        id: "notesnook-circle",
+        name: strings.notesnookCircle(),
+        icon: "circle-outline",
+        type: "screen",
+        description: strings.notesnookCircleDesc(),
+        component: "notesnook-circle"
       }
     ]
   },
@@ -676,7 +658,8 @@ export const settingsGroups: SettingSection[] = [
             type: "screen",
             name: strings.themes(),
             description: strings.themesDesc(),
-            component: "theme-selector"
+            component: "theme-selector",
+            icon: "shape"
           },
           {
             id: "use-system-theme",
@@ -714,36 +697,40 @@ export const settingsGroups: SettingSection[] = [
       {
         id: "behaviour",
         type: "screen",
+        icon: "brain",
         name: strings.behavior(),
         description: strings.behaviorDesc(),
         sections: [
           {
-            id: "default-home",
+            id: "default-sidebar-view",
             type: "component",
-            name: strings.homepage(),
-            description: strings.homepageDesc(),
-            component: "homeselector"
+            name: strings.defaultSidebarTab(),
+            description: strings.defaultSidebarTabDesc(),
+            component: "sidebar-tab-selector"
           },
           {
             id: "date-format",
             name: strings.dateFormat(),
             description: strings.dateFormatDesc(),
             type: "component",
-            component: "date-format-selector"
+            component: "date-format-selector",
+            icon: "calendar-blank"
           },
           {
             id: "time-format",
             name: strings.timeFormat(),
             description: strings.timeFormatDesc(),
             type: "component",
-            component: "time-format-selector"
+            component: "time-format-selector",
+            icon: "clock-digital"
           },
           {
             id: "clear-trash-interval",
             type: "component",
             name: strings.clearTrashInterval(),
             description: strings.clearTrashIntervalDesc(),
-            component: "trash-interval-selector"
+            component: "trash-interval-selector",
+            icon: "delete"
           },
           {
             id: "default-notebook",
@@ -756,7 +743,16 @@ export const settingsGroups: SettingSection[] = [
                 type: "success"
               });
             },
-            disabled: () => !db.settings.getDefaultNotebook()
+            disabled: () => !db.settings.getDefaultNotebook(),
+            icon: "notebook-minus"
+          },
+          {
+            id: "disable-update-check",
+            type: "switch",
+            name: strings.autoUpdateCheck(),
+            description: strings.autoUpdateCheckDesc(),
+            property: "checkForUpdates",
+            icon: "update"
           }
         ]
       },
@@ -831,7 +827,8 @@ export const settingsGroups: SettingSection[] = [
             name: strings.mardownShortcuts(),
             property: "markdownShortcuts",
             description: strings.mardownShortcutsDesc(),
-            type: "switch"
+            type: "switch",
+            featureId: "markdownShortcuts"
           }
         ]
       },
@@ -852,6 +849,7 @@ export const settingsGroups: SettingSection[] = [
       {
         id: "marketing-emails",
         type: "switch",
+        icon: "email-newsletter",
         name: strings.marketingEmails(),
         description: strings.marketingEmailsDesc(),
         modifer: async () => {
@@ -897,12 +895,10 @@ export const settingsGroups: SettingSection[] = [
             useHook: useVaultStatus,
             hidden: (current) => (current as VaultStatusType)?.exists,
             modifer: () => {
-              PremiumService.verify(() => {
-                openVault({
-                  item: {},
-                  novault: false,
-                  title: strings.createVault()
-                });
+              openVault({
+                item: {},
+                novault: false,
+                title: strings.createVault()
               });
             }
           },
@@ -1008,6 +1004,7 @@ export const settingsGroups: SettingSection[] = [
         type: "screen",
         description: strings.appLockDesc(),
         icon: "lock",
+        featureId: "appLock",
         sections: [
           {
             id: "app-lock-mode",
@@ -1016,6 +1013,7 @@ export const settingsGroups: SettingSection[] = [
             icon: "lock",
             type: "switch",
             property: "appLockEnabled",
+            featureId: "appLock",
             onChange: () => {
               SettingsService.set({
                 privacyScreen: true
@@ -1298,6 +1296,7 @@ export const settingsGroups: SettingSection[] = [
         id: "restore-backup",
         name: strings.restoreBackup(),
         description: strings.restoreBackupDesc(),
+        icon: "restore",
         type: "screen",
         component: "backuprestore"
       },
@@ -1325,7 +1324,7 @@ export const settingsGroups: SettingSection[] = [
         description: strings.quickNoteNotificationDesc(),
         property: "notifNotes",
         icon: "form-textbox",
-        modifer: () => {
+        modifer: async () => {
           const settings = SettingsService.get();
           if (settings.notifNotes) {
             Notifications.unpinQuickNote();
@@ -1336,7 +1335,8 @@ export const settingsGroups: SettingSection[] = [
             notifNotes: !settings.notifNotes
           });
         },
-        hidden: () => Platform.OS !== "android"
+        hidden: () => Platform.OS !== "android",
+        featureId: "createNoteFromNotificationDrawer"
       },
       {
         id: "reminders",
@@ -1424,7 +1424,7 @@ export const settingsGroups: SettingSection[] = [
       {
         id: "email-support",
         name: strings.emailSupport(),
-        icon: "mail",
+        icon: "email",
         modifer: () => {
           Clipboard.setString("support@streetwriters.co");
           ToastManager.show({
@@ -1442,7 +1442,7 @@ export const settingsGroups: SettingSection[] = [
         id: "docs-link",
         name: strings.documentation(),
         modifer: async () => {
-          Linking.openURL("https://docs.notesnook.com");
+          Linking.openURL("https://help.notesnook.com/");
         },
         description: strings.documentationDesc(),
         icon: "file-document"
@@ -1521,6 +1521,7 @@ export const settingsGroups: SettingSection[] = [
       {
         id: "tos",
         name: strings.tos(),
+        icon: "briefcase-outline",
         modifer: async () => {
           try {
             await Linking.openURL("https://notesnook.com/tos");
@@ -1533,6 +1534,7 @@ export const settingsGroups: SettingSection[] = [
       {
         id: "privacy-policy",
         name: strings.privacyPolicy(),
+        icon: "shield-outline",
         modifer: async () => {
           try {
             await Linking.openURL("https://notesnook.com/privacy");

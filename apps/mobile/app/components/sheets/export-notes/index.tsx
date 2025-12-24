@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React, { Fragment, useState } from "react";
 import {
@@ -38,28 +39,28 @@ import {
   presentSheet
 } from "../../../services/event-manager";
 import Exporter from "../../../services/exporter";
-import PremiumService from "../../../services/premium";
-import { useUserStore } from "../../../stores/use-user-store";
+import { useSettingStore } from "../../../stores/use-setting-store";
 import { getElevationStyle } from "../../../utils/elevation";
-import { SIZE, ph, pv } from "../../../utils/size";
+import { AppFontSize, defaultBorderRadius } from "../../../utils/size";
+import { DefaultAppStyles } from "../../../utils/styles";
 import { sleep } from "../../../utils/time";
 import { Dialog } from "../../dialog";
 import DialogHeader from "../../dialog/dialog-header";
-import { ProTag } from "../../premium/pro-tag";
 import { Button } from "../../ui/button";
 import { IconButton } from "../../ui/icon-button";
 import { Pressable } from "../../ui/pressable";
 import Seperator from "../../ui/seperator";
 import Heading from "../../ui/typography/heading";
 import Paragraph from "../../ui/typography/paragraph";
-import { strings } from "@notesnook/intl";
 
 const ExportNotesSheet = ({
   ids,
-  update
+  update,
+  close
 }: {
   ids: string[];
   update: ((props: PresentSheetOptions) => void) | undefined;
+  close: ((ctx?: string) => void) | undefined;
 }) => {
   const { colors } = useThemeColors();
   const [exporting, setExporting] = useState(false);
@@ -75,13 +76,11 @@ const ExportNotesSheet = ({
     | undefined
   >();
   const [status, setStatus] = useState<string>();
-  const premium = useUserStore((state) => state.premium);
 
   const exportNoteAs = async (
     type: "pdf" | "txt" | "md" | "html" | "md-frontmatter"
   ) => {
     if (exporting) return;
-    if (!PremiumService.get() && type !== "txt") return;
     setExporting(true);
     update?.({ disableClosing: true } as PresentSheetOptions);
     setComplete(false);
@@ -119,8 +118,7 @@ const ExportNotesSheet = ({
         await exportNoteAs("pdf");
       },
       icon: "file-pdf-box",
-      id: notesnook.ids.dialogs.export.pdf,
-      pro: premium
+      id: notesnook.ids.dialogs.export.pdf
     },
     {
       title: "Markdown",
@@ -128,8 +126,7 @@ const ExportNotesSheet = ({
         await exportNoteAs("md");
       },
       icon: "language-markdown",
-      id: notesnook.ids.dialogs.export.md,
-      pro: premium
+      id: notesnook.ids.dialogs.export.md
     },
     {
       title: "Markdown + Frontmatter",
@@ -137,8 +134,7 @@ const ExportNotesSheet = ({
         await exportNoteAs("md-frontmatter");
       },
       icon: "language-markdown",
-      id: notesnook.ids.dialogs.export.md,
-      pro: premium
+      id: notesnook.ids.dialogs.export.md
     },
     {
       title: "Plain Text",
@@ -146,8 +142,7 @@ const ExportNotesSheet = ({
         await exportNoteAs("txt");
       },
       icon: "card-text",
-      id: notesnook.ids.dialogs.export.text,
-      pro: true
+      id: notesnook.ids.dialogs.export.text
     },
     {
       title: "HTML",
@@ -155,8 +150,7 @@ const ExportNotesSheet = ({
         await exportNoteAs("html");
       },
       icon: "language-html5",
-      id: notesnook.ids.dialogs.export.html,
-      pro: premium
+      id: notesnook.ids.dialogs.export.html
     }
   ];
 
@@ -166,7 +160,7 @@ const ExportNotesSheet = ({
         <>
           <View
             style={{
-              paddingHorizontal: 12
+              paddingHorizontal: DefaultAppStyles.GAP
             }}
           >
             <DialogHeader
@@ -193,17 +187,16 @@ const ExportNotesSheet = ({
                   alignItems: "center",
                   flexDirection: "row",
                   paddingRight: 12,
-                  paddingVertical: 10,
+                  paddingVertical: DefaultAppStyles.GAP_VERTICAL,
                   justifyContent: "flex-start",
                   borderRadius: 0,
-                  paddingHorizontal: 12,
-                  opacity: item.pro ? 1 : 0.5
+                  paddingHorizontal: DefaultAppStyles.GAP
                 }}
               >
                 <View
                   style={{
                     backgroundColor: colors.primary.shade,
-                    borderRadius: 5,
+                    borderRadius: defaultBorderRadius,
                     height: 60,
                     width: 60,
                     justifyContent: "center",
@@ -212,10 +205,8 @@ const ExportNotesSheet = ({
                 >
                   <Icon
                     name={item.icon}
-                    color={
-                      item.pro ? colors.primary.accent : colors.primary.icon
-                    }
-                    size={SIZE.xxxl + 10}
+                    color={colors.primary.icon}
+                    size={AppFontSize.xxxl + 10}
                   />
                 </View>
                 <View
@@ -223,8 +214,7 @@ const ExportNotesSheet = ({
                     flexShrink: 1
                   }}
                 >
-                  {!item.pro ? <ProTag size={12} /> : null}
-                  <Heading style={{ marginLeft: 10 }} size={SIZE.md}>
+                  <Heading style={{ marginLeft: 10 }} size={AppFontSize.md}>
                     {item.title}
                   </Heading>
                   {/* <Paragraph
@@ -245,8 +235,8 @@ const ExportNotesSheet = ({
               justifyContent: "center",
               alignItems: "center",
               width: "100%",
-              paddingHorizontal: 12,
-              paddingVertical: 20
+              paddingHorizontal: DefaultAppStyles.GAP,
+              paddingVertical: DefaultAppStyles.GAP_VERTICAL
             }}
           >
             {!complete ? (
@@ -273,7 +263,7 @@ const ExportNotesSheet = ({
                 <Heading
                   style={{
                     textAlign: "center",
-                    marginTop: 10
+                    marginTop: DefaultAppStyles.GAP_VERTICAL
                   }}
                   color={colors.secondary.heading}
                 >
@@ -294,18 +284,18 @@ const ExportNotesSheet = ({
                   }
                   type="accent"
                   width={250}
-                  fontSize={SIZE.md}
                   style={{
-                    marginTop: 10,
-                    borderRadius: 100
+                    marginTop: DefaultAppStyles.GAP_VERTICAL
                   }}
                   onPress={async () => {
                     if (!result?.filePath) return;
+                    close?.();
                     if (Platform.OS === "android") {
                       Linking.openURL(result.fileDir).catch((e) => {
                         ToastManager.error(e as Error);
                       });
                     } else {
+                      await sleep(500);
                       FileViewer.open(result?.filePath, {
                         showOpenWithDialog: true,
                         showAppsSuggestions: true
@@ -323,14 +313,17 @@ const ExportNotesSheet = ({
                   title={strings.share()}
                   type="secondaryAccented"
                   width={250}
-                  fontSize={SIZE.md}
                   style={{
-                    marginTop: 10,
-                    borderRadius: 100
+                    marginTop: DefaultAppStyles.GAP_VERTICAL
                   }}
                   onPress={async () => {
                     if (!result) return;
+                    close?.();
+                    useSettingStore
+                      .getState()
+                      .setAppDidEnterBackgroundForAction(true);
                     if (Platform.OS === "ios") {
+                      await sleep(500);
                       Share.open({
                         url: result?.fileDir + result.fileName
                       }).catch(() => {
@@ -349,12 +342,10 @@ const ExportNotesSheet = ({
                 />
                 <Button
                   title={strings.exportAgain()}
-                  type="inverted"
+                  type="secondaryAccented"
                   width={250}
-                  fontSize={SIZE.md}
                   style={{
-                    marginTop: 10,
-                    borderRadius: 100
+                    marginTop: DefaultAppStyles.GAP_VERTICAL
                   }}
                   onPress={async () => {
                     setComplete(false);
@@ -375,7 +366,7 @@ ExportNotesSheet.present = async (ids?: string[], allNotes?: boolean) => {
   const exportNoteIds = allNotes ? await db.notes.all?.ids() : ids || [];
   presentSheet({
     component: (ref, close, update) => (
-      <ExportNotesSheet ids={exportNoteIds} update={update} />
+      <ExportNotesSheet ids={exportNoteIds} update={update} close={close} />
     ),
     keyboardHandlerDisabled: true
   });
@@ -384,18 +375,18 @@ ExportNotesSheet.present = async (ids?: string[], allNotes?: boolean) => {
 const styles = StyleSheet.create({
   container: {
     ...getElevationStyle(5),
-    borderRadius: 5,
-    paddingVertical: pv
+    borderRadius: defaultBorderRadius,
+    paddingVertical: DefaultAppStyles.GAP_VERTICAL
   },
   buttonContainer: {
     justifyContent: "space-between",
     alignItems: "center"
   },
   button: {
-    paddingVertical: pv,
-    paddingHorizontal: ph,
-    marginTop: 10,
-    borderRadius: 5,
+    paddingVertical: DefaultAppStyles.GAP_VERTICAL,
+    paddingHorizontal: DefaultAppStyles.GAP,
+    marginTop: DefaultAppStyles.GAP_VERTICAL,
+    borderRadius: defaultBorderRadius,
     width: "100%",
     justifyContent: "center",
     alignItems: "center",
@@ -405,7 +396,7 @@ const styles = StyleSheet.create({
   buttonText: {
     //fontFamily: "sans-serif",
     color: "white",
-    fontSize: SIZE.sm,
+    fontSize: AppFontSize.sm,
     marginLeft: 5
   },
   overlay: {

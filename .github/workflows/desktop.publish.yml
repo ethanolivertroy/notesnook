@@ -45,7 +45,7 @@ on:
 jobs:
   build:
     name: Build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -65,17 +65,13 @@ jobs:
           npm i --cpu x64 sqlite-better-trigram
         working-directory: ./apps/desktop
 
-      - name: Setup environment
-        run: |
-          echo "NX_CLOUD_ACCESS_TOKEN=${{ secrets.NX_CLOUD_ACCESS_TOKEN }}" >> $GITHUB_ENV
-
       - name: Generate desktop build (stable)
         if: ${{ inputs.release-track == 'stable' }}
-        run: npx nx build:desktop @notesnook/web
+        run: npm run tx @notesnook/web:build:desktop
 
       - name: Generate desktop build (beta)
         if: ${{ inputs.release-track == 'beta' }}
-        run: BETA=true npx nx build:desktop @notesnook/web
+        run: BETA=true npm run tx @notesnook/web:build:desktop
 
       - name: Build desktop bundle
         working-directory: ./apps/desktop
@@ -107,7 +103,8 @@ jobs:
           name: Notesnook Desktop v${{ steps.app_metadata.outputs.app_version }}
           tag_name: v${{ steps.app_metadata.outputs.app_version }}
           files: ./notesnook_build_v${{ steps.app_metadata.outputs.app_version }}.zip
-          prerelease: ${{ endsWith(steps.app_metadata.outputs.app_version, '-beta') }}
+          prerelease: ${{ inputs.release-track == 'beta' }}
+          target_commitish: ${{ github.ref }}
 
       - name: Generate flatpak sources
         if: inputs.publish-github && inputs.build-linux
@@ -198,9 +195,9 @@ jobs:
           CSC_LINK: ${{ secrets.mac_certs }}
           CSC_KEY_PASSWORD: ${{ secrets.mac_certs_password }}
         run: |
-          npx nx run release --project @notesnook/desktop -- --variant=mas
+          npm run tx @notesnook/desktop:release -- --variant=mas
+          cd apps/desktop
           yarn electron-builder --config=electron-builder.config.js --mac mas --universal -p never
-        working-directory: ./apps/desktop
 
       - name: Build zip and dmg
         env:
@@ -211,13 +208,13 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.api_key_id }}
           APPLE_API_ISSUER: ${{ secrets.api_key_issuer_id }}
         run: |
-          npx nx run release --project @notesnook/desktop
+          npm run tx @notesnook/desktop:release
+          cd apps/desktop
           if [ ${{ inputs.publish-github }} == true ]; then
             yarn electron-builder --config=electron-builder.config.js --mac zip dmg --arm64 --x64 -p always
           else
             yarn electron-builder --config=electron-builder.config.js --mac zip dmg --arm64 --x64 -p never
           fi
-        working-directory: ./apps/desktop
 
       - name: Deploy to Testflight
         if: inputs.publish-apple && steps.appstore.outputs.app-version-latest != steps.app_metadata.outputs.app_version
@@ -232,8 +229,8 @@ jobs:
           xcrun altool --upload-package $package -t osx --apiKey $API_KEY_ID --apiIssuer $API_KEY_ISSUER_ID --apple-id ${{ steps.app_metadata.outputs.apple_app_id }} --bundle-id ${{ steps.app_metadata.outputs.app_bundle_id }} --bundle-short-version-string ${{ steps.app_metadata.outputs.app_version }} --bundle-version ${{ steps.app_metadata.outputs.bundle_version }}
         working-directory: ./apps/desktop
 
-  build-linux:
-    name: Build for Linux
+  build-linux-x64:
+    name: Build for Linux x64
     needs: build
     if: inputs.build-linux
     runs-on: ubuntu-22.04
@@ -250,7 +247,7 @@ jobs:
         run: echo "SNAPCRAFT_STORE_CREDENTIALS=${{ secrets.snapcraft_token }}" >> $GITHUB_ENV
 
       - name: Install Snapcraft
-        uses: samuelmeuli/action-snapcraft@v1
+        uses: samuelmeuli/action-snapcraft@v3
         if: inputs.publish-snap
 
       - name: Download build
@@ -266,13 +263,11 @@ jobs:
 
       - name: Install sqlite-better-trigram for all arch
         run: |
-          npm i --cpu arm64 sqlite-better-trigram
           npm i --cpu x64 sqlite-better-trigram
         working-directory: ./apps/desktop
 
       - name: Build Electron wrapper
-        run: npx nx run release --project @notesnook/desktop
-        working-directory: ./apps/desktop
+        run: npm run tx @notesnook/desktop:release
 
       - name: Build snap
         if: inputs.publish-snap
@@ -285,17 +280,84 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ ${{ inputs.publish-github }} == true ]; then
-            yarn electron-builder --config=electron-builder.config.js --linux AppImage:x64 AppImage:arm64 -p always
+            yarn electron-builder --config=electron-builder.config.js --linux AppImage:x64 -p always
           else
-            yarn electron-builder --config=electron-builder.config.js --linux AppImage:x64 AppImage:arm64 -p never
+            yarn electron-builder --config=electron-builder.config.js --linux AppImage:x64 -p never
           fi
         working-directory: ./apps/desktop
 
       - name: Publish on Snapcraft
         if: inputs.publish-snap
         run: |
-          snapcraft upload --release=stable ./output/notesnook_linux_amd64.snap
+          if [ ${{ inputs.release-track }} == 'beta' ]; then
+            snapcraft upload --release=beta ./output/notesnook_linux_amd64.snap
+          else
+            snapcraft upload --release=stable ./output/notesnook_linux_amd64.snap
+          fi
         working-directory: ./apps/desktop
+
+  build-linux-arm64:
+    name: Build for Linux arm64
+    needs: build
+    if: inputs.build-linux
+    runs-on: ubuntu-22.04-arm
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: ./.github/actions/setup-node-with-cache
+
+      # - name: Setup Snapcraft Auth
+      #   if: inputs.publish-snap
+      #   run: echo "SNAPCRAFT_STORE_CREDENTIALS=${{ secrets.snapcraft_token }}" >> $GITHUB_ENV
+
+      # - name: Install Snapcraft
+      #   uses: samuelmeuli/action-snapcraft@v1
+      #   if: inputs.publish-snap
+
+      - name: Download build
+        uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: ./apps/web/build
+
+      - name: Install packages
+        run: |
+          npm ci --ignore-scripts --prefer-offline --no-audit
+          npm run bootstrap -- --scope=desktop
+
+      - name: Install sqlite-better-trigram for all arch
+        run: |
+          npm i --cpu arm64 sqlite-better-trigram
+        working-directory: ./apps/desktop
+
+      - name: Build Electron wrapper
+        run: npm run tx @notesnook/desktop:release
+
+      # - name: Build snap
+      #   if: inputs.publish-snap
+      #   run: |
+      #     yarn electron-builder --config=electron-builder.config.js --linux snap:arm64 -p never
+      #   working-directory: ./apps/desktop
+
+      - name: Build AppImage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ${{ inputs.publish-github }} == true ]; then
+            yarn electron-builder --config=electron-builder.config.js --linux AppImage:arm64 -p always
+          else
+            yarn electron-builder --config=electron-builder.config.js --linux AppImage:arm64 -p never
+          fi
+        working-directory: ./apps/desktop
+
+      # - name: Publish on Snapcraft
+      #   if: inputs.publish-snap
+      #   run: |
+      #     snapcraft upload --release=stable ./output/notesnook_linux_arm64.snap
+      #   working-directory: ./apps/desktop
 
   build-windows:
     name: Build for Windows
@@ -334,10 +396,13 @@ jobs:
         run: |
           npm i --cpu arm64 sqlite-better-trigram
           npm i --cpu x64 sqlite-better-trigram
+
+          npm i --cpu arm64 sqlite3-fts5-html
+          npm i --cpu x64 sqlite3-fts5-html
         working-directory: ./apps/desktop
 
       - name: Build
-        run: npx nx run release --project @notesnook/desktop
+        run: node scripts/execute.mjs @notesnook/desktop:release
 
       - name: Publish
         env:

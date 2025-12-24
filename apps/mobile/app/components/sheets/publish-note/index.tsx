@@ -17,47 +17,89 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import { hosts, Monograph, Note } from "@notesnook/core";
+import { strings } from "@notesnook/intl";
+import { useThemeColors } from "@notesnook/theme";
 import Clipboard from "@react-native-clipboard/clipboard";
-import React, { useRef, useState } from "react";
-import { ActivityIndicator, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  TextInput,
+  TouchableOpacity,
+  View
+} from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
+//@ts-ignore
+import ToggleSwitch from "toggle-switch-react-native";
 import { db } from "../../../common/database";
+import { requestInAppReview } from "../../../services/app-review";
 import { presentSheet, ToastManager } from "../../../services/event-manager";
 import Navigation from "../../../services/navigation";
 import { useAttachmentStore } from "../../../stores/use-attachment-store";
-import { useThemeColors } from "@notesnook/theme";
 import { openLinkInBrowser } from "../../../utils/functions";
-import { SIZE } from "../../../utils/size";
+import { AppFontSize, defaultBorderRadius } from "../../../utils/size";
+import { DefaultAppStyles } from "../../../utils/styles";
 import DialogHeader from "../../dialog/dialog-header";
 import { Button } from "../../ui/button";
 import { IconButton } from "../../ui/icon-button";
 import Input from "../../ui/input";
-import Seperator from "../../ui/seperator";
 import Heading from "../../ui/typography/heading";
 import Paragraph from "../../ui/typography/paragraph";
-import { requestInAppReview } from "../../../services/app-review";
-import { hosts, Note } from "@notesnook/core";
-import { strings } from "@notesnook/intl";
+import { useAsync } from "react-async-hook";
+import { isFeatureAvailable, useIsFeatureAvailable } from "@notesnook/common";
+
+async function fetchMonographData(noteId: string) {
+  const monographId = db.monographs.monograph(noteId);
+  const monograph = monographId
+    ? await db.monographs.get(monographId)
+    : undefined;
+  const analyticsFeature = await isFeatureAvailable("monographAnalytics");
+  const analytics =
+    monographId && analyticsFeature
+      ? await db.monographs.analytics(monographId)
+      : undefined;
+  return {
+    monograph,
+    monographId,
+    analytics
+  };
+}
 
 const PublishNoteSheet = ({
-  note: item
+  note
 }: {
   note: Note;
   close?: (ctx?: string) => void;
 }) => {
   const { colors } = useThemeColors();
-
   const attachmentDownloads = useAttachmentStore((state) => state.downloading);
-  const downloading = attachmentDownloads?.[`monograph-${item.id}`];
+  const downloading = attachmentDownloads?.[`monograph-${note.id}`];
   const [selfDestruct, setSelfDestruct] = useState(false);
+  const isFeatureAvailable = useIsFeatureAvailable("monographAnalytics");
   const [isLocked, setIsLocked] = useState(false);
-  const [note, setNote] = useState<Note | undefined>(item);
   const [publishing, setPublishing] = useState(false);
-  const publishUrl =
-    note && `${hosts.MONOGRAPH_HOST}/${db.monographs.monograph(note?.id)}`;
-  const isPublished = note && db.monographs.isPublished(note?.id);
-  const pwdInput = useRef(null);
-  const passwordValue = useRef<string>();
+  const pwdInput = useRef<TextInput>(null);
+  const passwordValue = useRef<string>(undefined);
+  const monographData = useAsync(async () => {
+    return fetchMonographData(note?.id);
+  }, []);
+  const monograph = monographData.result?.monograph;
+  const publishUrl = monograph && `${hosts.MONOGRAPH_HOST}/${monograph?.id}`;
+  const isPublished = db.monographs.monograph(note?.id);
+
+  useEffect(() => {
+    (async () => {
+      if (monograph) {
+        setSelfDestruct(!!monograph?.selfDestruct);
+        if (monograph.password) {
+          passwordValue.current = await db.monographs.decryptPassword(
+            monograph?.password
+          );
+          setIsLocked(!!monograph?.password);
+        }
+      }
+    })();
+  }, [monograph]);
 
   const publishNote = async () => {
     if (publishing) return;
@@ -70,7 +112,8 @@ const PublishNoteSheet = ({
           selfDestruct: selfDestruct,
           password: isLocked ? passwordValue.current : undefined
         });
-        setNote(await db.notes.note(note.id));
+
+        await monographData.execute();
         Navigation.queueRoutesForUpdate();
         setPublishLoading(false);
       }
@@ -97,7 +140,7 @@ const PublishNoteSheet = ({
     try {
       if (note?.id) {
         await db.monographs.unpublish(note.id);
-        setNote(await db.notes.note(note.id));
+        monographData.execute();
         Navigation.queueRoutesForUpdate();
         setPublishLoading(false);
       }
@@ -117,15 +160,19 @@ const PublishNoteSheet = ({
       style={{
         width: "100%",
         alignSelf: "center",
-        paddingHorizontal: 12
+        paddingHorizontal: DefaultAppStyles.GAP,
+        gap: DefaultAppStyles.GAP_VERTICAL
       }}
     >
-      <DialogHeader
-        title={strings.publishNote()}
-        paragraph={strings.publishNoteDesc()}
-      />
+      {isPublished &&
+      (monographData?.result?.monograph || monographData?.loading) ? null : (
+        <DialogHeader
+          title={strings.publishNote()}
+          paragraph={strings.publishNoteDesc()}
+        />
+      )}
 
-      {publishing ? (
+      {publishing || monographData.loading ? (
         <View
           style={{
             justifyContent: "center",
@@ -151,14 +198,21 @@ const PublishNoteSheet = ({
       ) : (
         <>
           {isPublished && publishUrl ? (
-            <View
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  await openLinkInBrowser(publishUrl);
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                marginTop: 10,
+                marginTop: DefaultAppStyles.GAP_VERTICAL,
                 backgroundColor: colors.secondary.background,
-                padding: 12,
-                borderRadius: 5
+                padding: DefaultAppStyles.GAP,
+                borderRadius: defaultBorderRadius
               }}
             >
               <View
@@ -167,26 +221,11 @@ const PublishNoteSheet = ({
                   flexShrink: 1
                 }}
               >
-                <Heading size={SIZE.md}>{strings.publishedAt()}:</Heading>
-                <Paragraph size={SIZE.sm} numberOfLines={1}>
+                <Heading size={AppFontSize.md}>
+                  {strings.publishedAt()}:
+                </Heading>
+                <Paragraph size={AppFontSize.sm} numberOfLines={1}>
                   {publishUrl}
-                </Paragraph>
-                <Paragraph
-                  onPress={async () => {
-                    try {
-                      await openLinkInBrowser(publishUrl);
-                    } catch (e) {
-                      console.error(e);
-                    }
-                  }}
-                  size={SIZE.xs}
-                  style={{
-                    marginTop: 5,
-                    color: colors.primary.paragraph
-                  }}
-                >
-                  <Icon color={colors.primary.accent} name="open-in-new" />{" "}
-                  {strings.openInBrowser()}
                 </Paragraph>
               </View>
 
@@ -200,10 +239,10 @@ const PublishNoteSheet = ({
                   });
                 }}
                 color={colors.primary.accent}
-                size={SIZE.lg}
+                size={AppFontSize.lg}
                 name="content-copy"
               />
-            </View>
+            </TouchableOpacity>
           ) : null}
 
           <TouchableOpacity
@@ -215,35 +254,54 @@ const PublishNoteSheet = ({
             style={{
               flexDirection: "row",
               alignItems: "center",
-              marginBottom: 10,
               backgroundColor: colors.secondary.background,
-              paddingVertical: 12,
-              borderRadius: 5,
-              marginTop: 10
+              borderRadius: defaultBorderRadius,
+              paddingHorizontal: DefaultAppStyles.GAP,
+              paddingVertical: DefaultAppStyles.GAP_VERTICAL
             }}
           >
-            <IconButton
-              onPress={() => {
-                if (publishing) return;
-                setIsLocked(!isLocked);
-              }}
-              color={isLocked ? colors.selected.icon : colors.primary.icon}
-              size={SIZE.xl}
-              name={
-                isLocked
-                  ? "check-circle-outline"
-                  : "checkbox-blank-circle-outline"
-              }
-            />
-
             <View
               style={{
                 width: "100%",
                 flexShrink: 1
               }}
             >
-              <Heading size={SIZE.md}>{strings.monographPassHeading()}</Heading>
-              <Paragraph>{strings.monographPassDesc()}</Paragraph>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between"
+                }}
+              >
+                <Paragraph size={AppFontSize.sm}>
+                  {strings.monographPassHeading()}
+                </Paragraph>
+                <ToggleSwitch
+                  isOn={isLocked}
+                  onColor={colors.primary.accent}
+                  offColor={colors.primary.icon}
+                  size="small"
+                  animationSpeed={150}
+                  onToggle={() => setIsLocked(!isLocked)}
+                />
+              </View>
+
+              {/* <Paragraph>{strings.monographPassDesc()}</Paragraph> */}
+
+              {isLocked ? (
+                <>
+                  <Input
+                    fwdRef={pwdInput}
+                    onChangeText={(value) => (passwordValue.current = value)}
+                    blurOnSubmit
+                    secureTextEntry
+                    defaultValue={passwordValue.current}
+                    placeholder={strings.enterPassword()}
+                    containerStyle={{
+                      marginTop: DefaultAppStyles.GAP_VERTICAL
+                    }}
+                  />
+                </>
+              ) : null}
             </View>
           </TouchableOpacity>
 
@@ -256,99 +314,112 @@ const PublishNoteSheet = ({
               flexDirection: "row",
               alignItems: "center",
               backgroundColor: colors.secondary.background,
-              paddingVertical: 12,
-              borderRadius: 5
+              paddingVertical: DefaultAppStyles.GAP_VERTICAL,
+              borderRadius: defaultBorderRadius,
+              paddingHorizontal: DefaultAppStyles.GAP
             }}
           >
-            <IconButton
-              onPress={() => {
-                setSelfDestruct(!selfDestruct);
-              }}
-              color={selfDestruct ? colors.selected.icon : colors.primary.icon}
-              size={SIZE.xl}
-              name={
-                selfDestruct
-                  ? "check-circle-outline"
-                  : "checkbox-blank-circle-outline"
-              }
-            />
-
             <View
               style={{
                 width: "100%",
                 flexShrink: 1
               }}
             >
-              <Heading size={SIZE.md}>
-                {strings.monographSelfDestructHeading()}
-              </Heading>
-              <Paragraph>{strings.monographSelfDestructDesc()}</Paragraph>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between"
+                }}
+              >
+                <Paragraph size={AppFontSize.sm}>
+                  {strings.monographSelfDestructHeading()}
+                </Paragraph>
+                <ToggleSwitch
+                  isOn={selfDestruct}
+                  onColor={colors.primary.accent}
+                  offColor={colors.primary.icon}
+                  size="small"
+                  animationSpeed={150}
+                  onToggle={() => setSelfDestruct(!selfDestruct)}
+                />
+              </View>
+
+              {/* <Paragraph>{strings.monographSelfDestructDesc()}</Paragraph> */}
             </View>
           </TouchableOpacity>
+
+          {isFeatureAvailable?.isAllowed ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.secondary.background,
+                paddingVertical: DefaultAppStyles.GAP_VERTICAL,
+                borderRadius: defaultBorderRadius,
+                paddingHorizontal: DefaultAppStyles.GAP
+              }}
+            >
+              <View
+                style={{
+                  width: "100%",
+                  flexShrink: 1
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between"
+                  }}
+                >
+                  <Paragraph size={AppFontSize.sm}>{strings.views()}</Paragraph>
+                  <Paragraph>
+                    {monographData?.result?.analytics?.totalViews || 0}
+                  </Paragraph>
+                </View>
+              </View>
+            </View>
+          ) : null}
 
           <View
             style={{
               width: "100%",
-              alignSelf: "center",
-              marginTop: 10
+              justifyContent: "center",
+              gap: DefaultAppStyles.GAP_VERTICAL
             }}
           >
-            {isLocked ? (
-              <>
-                <Input
-                  fwdRef={pwdInput}
-                  onChangeText={(value) => (passwordValue.current = value)}
-                  blurOnSubmit
-                  secureTextEntry
-                  defaultValue={passwordValue.current}
-                  placeholder={strings.enterPassword()}
-                />
-                <Seperator half />
-              </>
-            ) : null}
-
-            <View
+            <Button
+              onPress={publishNote}
               style={{
-                flexDirection: "row",
                 width: "100%",
-                justifyContent: "center"
+                borderRadius: defaultBorderRadius
               }}
-            >
-              {isPublished && (
-                <>
-                  <Button
-                    onPress={deletePublishedNote}
-                    fontSize={SIZE.md}
-                    type="error"
-                    title={strings.unpublish()}
-                    style={{
-                      width: "49%"
-                    }}
-                  />
-                </>
-              )}
-              <Seperator half />
-              <Button
-                onPress={publishNote}
-                fontSize={SIZE.md}
-                style={{
-                  width: isPublished ? "49%" : 250,
-                  borderRadius: isPublished ? 5 : 100
-                }}
-                type="accent"
-                title={isPublished ? strings.update() : strings.publish()}
-              />
-            </View>
+              type="accent"
+              title={isPublished ? strings.update() : strings.publish()}
+            />
+
+            {isPublished && (
+              <>
+                <Button
+                  onPress={deletePublishedNote}
+                  type="error"
+                  title={strings.unpublish()}
+                  style={{
+                    width: "100%",
+                    borderRadius: defaultBorderRadius
+                  }}
+                />
+              </>
+            )}
           </View>
         </>
       )}
 
       <Paragraph
         color={colors.secondary.paragraph}
-        size={SIZE.xs}
+        size={AppFontSize.xs}
         style={{
           textAlign: "center",
-          marginTop: 10,
+          marginTop: DefaultAppStyles.GAP_VERTICAL,
           textDecorationLine: "underline"
         }}
         onPress={async () => {

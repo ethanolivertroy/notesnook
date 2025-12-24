@@ -22,7 +22,6 @@ import { useThemeColors } from "@notesnook/theme";
 import React, { RefObject, useEffect, useState } from "react";
 import { View } from "react-native";
 import { ActionSheetRef } from "react-native-actions-sheet";
-import { FlashList } from "react-native-actions-sheet/dist/src/views/FlashList";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { db } from "../../../common/database";
 import {
@@ -30,12 +29,12 @@ import {
   presentSheet
 } from "../../../services/event-manager";
 import { useRelationStore } from "../../../stores/use-relation-store";
-import { SIZE } from "../../../utils/size";
+import { AppFontSize } from "../../../utils/size";
+import { DefaultAppStyles } from "../../../utils/styles";
 import DialogHeader from "../../dialog/dialog-header";
 import List from "../../list";
 import SheetProvider from "../../sheet-provider";
-import { Button } from "../../ui/button";
-import { PressableProps } from "../../ui/pressable";
+import { Button, ButtonProps } from "../../ui/button";
 import Paragraph from "../../ui/typography/paragraph";
 
 type RelationsListProps = {
@@ -46,16 +45,8 @@ type RelationsListProps = {
   referenceType: string;
   relationType: "to" | "from";
   title: string;
-  button?: Button;
+  button?: ButtonProps;
   onAdd: () => void;
-};
-
-type Button = {
-  onPress?: (() => void) | undefined;
-  loading?: boolean | undefined;
-  title?: string | undefined;
-  type?: PressableProps["type"];
-  icon?: string;
 };
 
 const IconsByType = {
@@ -73,9 +64,7 @@ export const RelationsList = ({
 }: RelationsListProps) => {
   const updater = useRelationStore((state) => state.updater);
   const { colors } = useThemeColors();
-
   const [items, setItems] = useState<VirtualizedGrouping<Item>>();
-
   const hasNoRelations = !items || items?.placeholders?.length === 0;
 
   useEffect(() => {
@@ -95,7 +84,7 @@ export const RelationsList = ({
   }, [relationType, referenceType, item?.id, item?.type, updater]);
 
   return (
-    <View style={{ paddingHorizontal: 12, height: "100%" }}>
+    <View style={{ paddingHorizontal: DefaultAppStyles.GAP, height: "100%" }}>
       <SheetProvider context="local" />
       <DialogHeader
         title={title}
@@ -119,7 +108,7 @@ export const RelationsList = ({
             onPress={() => {
               onAdd?.();
             }}
-            fontSize={SIZE.sm}
+            fontSize={AppFontSize.sm}
             //  width="100%"
             type="inverted"
             icon="plus"
@@ -131,7 +120,6 @@ export const RelationsList = ({
       ) : (
         <List
           data={items}
-          CustomListComponent={FlashList}
           loading={false}
           dataType={referenceType as any}
           isRenderedInActionSheet={true}
@@ -153,7 +141,7 @@ RelationsList.present = ({
   referenceType: string;
   relationType: "to" | "from";
   title: string;
-  button?: Button;
+  button?: ButtonProps;
   onAdd: () => void;
 }) => {
   presentSheet({

@@ -17,14 +17,21 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import { LegendList } from "@legendapp/list";
 import { formatBytes, getFormattedDate } from "@notesnook/common";
 import { LegacyBackupFile } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
+import { keepLocalCopy, pick } from "@react-native-documents/picker";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Platform, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  Platform,
+  ScrollView,
+  View
+} from "react-native";
 import RNFetchBlob, { ReactNativeBlobUtilStat } from "react-native-blob-util";
-import DocumentPicker from "react-native-document-picker";
 import * as ScopedStorage from "react-native-scoped-storage";
 import { unzip } from "react-native-zip-archive";
 import { DatabaseLogger, db } from "../../../common/database";
@@ -46,7 +53,8 @@ import Navigation from "../../../services/navigation";
 import SettingsService from "../../../services/settings";
 import { refreshAllStores } from "../../../stores/create-db-collection-store";
 import { useUserStore } from "../../../stores/use-user-store";
-import { SIZE } from "../../../utils/size";
+import { AppFontSize } from "../../../utils/size";
+import { DefaultAppStyles } from "../../../utils/styles";
 
 type PasswordOrKey = { password?: string; encryptionKey?: string };
 
@@ -321,7 +329,9 @@ export const RestoreBackup = () => {
         });
 
       setFiles(files);
+      setLoading(false);
       BACKUP_FILES_CACHE.splice(0, BACKUP_FILES_CACHE.length, ...files);
+      setLoading(false);
     } catch (e) {
       e;
     } finally {
@@ -342,143 +352,152 @@ export const RestoreBackup = () => {
 
   return (
     <>
-      <FlatList
-        data={[0]}
-        renderItem={() => {
-          return (
-            <View>
-              <SectionItem
-                item={{
-                  id: "restore-from-files",
-                  name: strings.restoreFromFiles(),
-                  icon: "folder",
-                  modifer: async () => {
-                    useUserStore.setState({
-                      disableAppLockRequests: true
-                    });
-                    const file = await DocumentPicker.pickSingle({
-                      copyTo: "cachesDirectory"
-                    });
-
-                    setTimeout(() => {
-                      useUserStore.setState({
-                        disableAppLockRequests: false
-                      });
-                    }, 1000);
-
-                    restoreBackup({
-                      uri:
-                        Platform.OS === "android"
-                          ? (("file://" + file.fileCopyUri) as string)
-                          : (file.fileCopyUri as string),
-                      deleteFile: true
-                    });
-                  },
-                  description: strings.selectBackupFileDesc()
-                }}
-              />
-
-              {Platform.OS === "android" ? (
-                <SectionItem
-                  item={{
-                    id: "select-backup-folder",
-                    name: strings.selectBackupFolder(),
-                    icon: "folder",
-                    modifer: async () => {
-                      const folder = await ScopedStorage.openDocumentTree(true);
-                      let subfolder;
-                      if (folder.name !== "Notesnook backups") {
-                        subfolder = await ScopedStorage.createDirectory(
-                          folder.uri,
-                          "Notesnook backups"
-                        );
-                      } else {
-                        subfolder = folder;
-                      }
-                      SettingsService.set({
-                        backupDirectoryAndroid: subfolder
-                      });
-                      setBackupDirectoryAndroid(subfolder);
-                      setLoading(true);
-                      checkBackups();
-                    },
-                    description: strings.selectFolderForBackupFilesDesc()
-                  }}
-                />
-              ) : null}
-
-              <FlatList
-                ListHeaderComponent={
-                  <View
-                    style={{
-                      backgroundColor: colors.primary.background,
-                      marginBottom: 10
-                    }}
-                  >
-                    <Heading color={colors.primary.accent} size={SIZE.xs}>
-                      {strings.recentBackups()}
-                    </Heading>
-                  </View>
-                }
-                stickyHeaderIndices={[0]}
-                ListEmptyComponent={
-                  loading ? (
-                    <View
-                      style={{
-                        justifyContent: "center",
-                        alignItems: "center",
-                        height: 300,
-                        paddingHorizontal: 50
-                      }}
-                    >
-                      <ActivityIndicator
-                        color={colors.primary.accent}
-                        size={SIZE.lg}
-                      />
-                    </View>
-                  ) : (
-                    <View
-                      style={{
-                        justifyContent: "center",
-                        alignItems: "center",
-                        gap: 12,
-                        height: 300,
-                        paddingHorizontal: 50
-                      }}
-                    >
-                      <Paragraph
-                        style={{
-                          textAlign: "center"
-                        }}
-                        color={colors.secondary.paragraph}
-                      >
-                        {strings.noBackupsFound()}.
-                      </Paragraph>
-                    </View>
-                  )
-                }
-                windowSize={2}
-                keyExtractor={(item) =>
-                  (item as ScopedStorage.FileType).name ||
-                  (item as ReactNativeBlobUtilStat).filename
-                }
-                style={{
-                  paddingHorizontal: 12
-                }}
-                ListFooterComponent={
-                  <View
-                    style={{
-                      height: 200
-                    }}
-                  />
-                }
-                data={files}
-                renderItem={renderItem}
-              />
-            </View>
-          );
+      <ScrollView
+        style={{
+          width: "100%"
         }}
-      />
+      >
+        <SectionItem
+          item={{
+            id: "restore-from-files",
+            name: strings.restoreFromFiles(),
+            icon: "folder",
+            modifer: async () => {
+              useUserStore.setState({
+                disableAppLockRequests: true
+              });
+              const file = await pick();
+
+              const fileCopy = await keepLocalCopy({
+                destination: "cachesDirectory",
+                files: [
+                  {
+                    uri: file[0].uri,
+                    fileName: file[0].name ?? `backup_restore_${Date.now()}`
+                  }
+                ]
+              });
+
+              if (fileCopy[0].status === "error") {
+                ToastManager.error(new Error("File copy error"));
+                return;
+              }
+
+              setTimeout(() => {
+                useUserStore.setState({
+                  disableAppLockRequests: false
+                });
+              }, 1000);
+
+              restoreBackup({
+                uri:
+                  Platform.OS === "android"
+                    ? (("file://" + fileCopy[0].sourceUri) as string)
+                    : (fileCopy[0].sourceUri as string),
+                deleteFile: true
+              });
+            },
+            description: strings.selectBackupFileDesc()
+          }}
+        />
+
+        {Platform.OS === "android" ? (
+          <SectionItem
+            item={{
+              id: "select-backup-folder",
+              name: strings.selectBackupFolder(),
+              icon: "folder",
+              modifer: async () => {
+                const folder = await ScopedStorage.openDocumentTree(true);
+                let subfolder;
+                if (folder.name !== "Notesnook backups") {
+                  subfolder = await ScopedStorage.createDirectory(
+                    folder.uri,
+                    "Notesnook backups"
+                  );
+                } else {
+                  subfolder = folder;
+                }
+                SettingsService.set({
+                  backupDirectoryAndroid: subfolder
+                });
+                setBackupDirectoryAndroid(subfolder);
+                setLoading(true);
+                checkBackups();
+              },
+              description: strings.selectFolderForBackupFilesDesc()
+            }}
+          />
+        ) : null}
+
+        <LegendList
+          ListHeaderComponent={
+            <View
+              style={{
+                backgroundColor: colors.primary.background,
+                marginBottom: DefaultAppStyles.GAP_VERTICAL,
+                paddingHorizontal: DefaultAppStyles.GAP
+              }}
+            >
+              <Heading color={colors.primary.accent} size={AppFontSize.xs}>
+                {strings.recentBackups()}
+              </Heading>
+            </View>
+          }
+          ListEmptyComponent={
+            loading ? (
+              <View
+                style={{
+                  justifyContent: "center",
+                  alignItems: "center",
+                  height: 300,
+                  paddingHorizontal: 50
+                }}
+              >
+                <ActivityIndicator
+                  color={colors.primary.accent}
+                  size={AppFontSize.lg}
+                />
+              </View>
+            ) : (
+              <View
+                style={{
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: 12,
+                  height: 300,
+                  paddingHorizontal: 50
+                }}
+              >
+                <Paragraph
+                  style={{
+                    textAlign: "center"
+                  }}
+                  color={colors.secondary.paragraph}
+                >
+                  {strings.noBackupsFound()}.
+                </Paragraph>
+              </View>
+            )
+          }
+          keyExtractor={(item) =>
+            (item as ScopedStorage.FileType).name ||
+            (item as ReactNativeBlobUtilStat).filename
+          }
+          ListFooterComponent={
+            <View
+              style={{
+                height: 200
+              }}
+            />
+          }
+          style={{
+            width: "100%"
+          }}
+          data={files}
+          renderItem={renderItem}
+        />
+      </ScrollView>
     </>
   );
 };
@@ -512,13 +531,19 @@ const BackupItem = ({
         flexDirection: "row",
         borderBottomWidth: 0.5,
         borderBottomColor: colors.primary.border,
-        paddingVertical: 12
+        paddingVertical: DefaultAppStyles.GAP_VERTICAL,
+        paddingHorizontal: DefaultAppStyles.GAP,
+        gap: DefaultAppStyles.GAP_SMALL
       }}
     >
-      <View>
-        <Paragraph size={SIZE.sm}>{itemName}</Paragraph>
+      <View
+        style={{
+          flexShrink: 1
+        }}
+      >
+        <Paragraph size={AppFontSize.sm}>{itemName}</Paragraph>
         <Paragraph
-          size={SIZE.xs}
+          size={AppFontSize.xs}
           color={colors.secondary.paragraph}
           style={{ width: "100%", maxWidth: "100%" }}
         >
@@ -531,8 +556,8 @@ const BackupItem = ({
         title="Restore"
         type="secondaryAccented"
         style={{
-          paddingHorizontal: 12,
-          height: 35
+          paddingHorizontal: DefaultAppStyles.GAP,
+          paddingVertical: DefaultAppStyles.GAP_VERTICAL_SMALL
         }}
         onPress={() => {
           presentDialog({

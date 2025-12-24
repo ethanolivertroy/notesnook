@@ -27,6 +27,8 @@ import {
 import { createNodeView } from "../react/index.js";
 import { TextDirections } from "../text-direction/index.js";
 import { ImageComponent } from "./component.js";
+import { tiptapKeys } from "@notesnook/common";
+import { hasPermission } from "../../types.js";
 
 export interface ImageOptions {
   inline: boolean;
@@ -60,10 +62,10 @@ const inputRegex = /(!\[(.+|:?)]\((\S+)(?:(?:\s+)["'](\S+)["'])?\))$/;
 
 export const ImageNode = Node.create<ImageOptions>({
   name: "image",
-
+  atom: true,
   addOptions() {
     return {
-      inline: true,
+      inline: false,
       allowBase64: true,
       HTMLAttributes: {}
     };
@@ -94,7 +96,6 @@ export const ImageNode = Node.create<ImageOptions>({
       height: { default: null },
 
       // TODO: maybe these should be stored as styles?
-      float: getDataAttribute("float", false),
       align: getDataAttribute("align"),
 
       hash: getDataAttribute("hash"),
@@ -122,6 +123,16 @@ export const ImageNode = Node.create<ImageOptions>({
 
   parseHTML() {
     return [
+      // migration for inline image nodes into block nodes
+      {
+        priority: 60,
+        tag: "p",
+        skip: true,
+        getAttrs(node) {
+          if (node.querySelectorAll("img").length <= 0) return false;
+          return null;
+        }
+      },
       {
         tag: this.options.allowBase64 ? "img" : 'img:not([src^="data:"])'
       }
@@ -148,6 +159,10 @@ export const ImageNode = Node.create<ImageOptions>({
       insertImage:
         (options) =>
         ({ commands, state }) => {
+          if (!hasPermission("insertAttachment")) {
+            return false;
+          }
+
           const { $from } = state.selection;
           const maybeImageNode = state.doc.nodeAt($from.pos);
           if (maybeImageNode?.type === this.type) {
@@ -199,7 +214,7 @@ export const ImageNode = Node.create<ImageOptions>({
 
   addKeyboardShortcuts() {
     return {
-      "Mod-Shift-I": () =>
+      [tiptapKeys.addImage.keys]: () =>
         this.editor.storage.openAttachmentPicker?.("image") || true
     };
   }

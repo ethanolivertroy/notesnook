@@ -49,9 +49,9 @@ function Title({
     if (!titleSizeDiv.current || !titleRef.current) return;
     titleSizeDiv.current.innerText = titleRef.current.value;
     titleRef.current.style.height = `${titleSizeDiv.current.clientHeight}px`;
+    titleRef.current.style.minHeight = `${titleSizeDiv.current.clientHeight}px`;
     titleSizeDiv.current.style.width = `${titleRef.current.clientWidth}px`;
   }, []);
-
   useEffect(() => {
     if (titleRef.current) {
       titleRef.current.value = title;
@@ -73,9 +73,10 @@ function Title({
 
   useEffect(() => {
     if (!loading) {
+      resizeTextarea();
       setTimeout(() => {
         resizeTextarea();
-      }, 300);
+      }, 100);
     }
   }, [loading, resizeTextarea]);
 
@@ -88,10 +89,10 @@ function Title({
           maxWidth: "100%",
           minHeight: 40,
           opacity: 0,
-          paddingRight: 10,
-          paddingLeft: 10,
+          paddingRight: 16,
+          paddingLeft: 16,
           fontWeight: 600,
-          fontFamily: getFontById(fontFamily)?.font || "Open Sans",
+          fontFamily: getFontById(fontFamily)?.font || "Inter",
           boxSizing: "border-box",
           fontSize: 25,
           zIndex: -1,
@@ -107,6 +108,7 @@ function Title({
       <textarea
         ref={titleRef}
         className={styles.titleBar}
+        id="editor-title"
         rows={1}
         contentEditable={!readonly}
         disabled={readonly}
@@ -119,10 +121,10 @@ function Title({
           boxSizing: "border-box",
           border: 0,
           opacity: 1,
-          paddingRight: 10,
-          paddingLeft: 10,
+          paddingRight: 16,
+          paddingLeft: 16,
           fontWeight: 600,
-          fontFamily: getFontById(fontFamily)?.font || "Open Sans",
+          fontFamily: getFontById(fontFamily)?.font || "Inter",
           backgroundColor: "transparent",
           color: "var(--nn_primary_heading)",
           caretColor: "var(--nn_primary_accent)",
@@ -152,6 +154,9 @@ function Title({
           }
         }}
         onPaste={() => {
+          resizeTextarea();
+        }}
+        onCut={() => {
           resizeTextarea();
         }}
         placeholder={titlePlaceholder}

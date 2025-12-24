@@ -22,6 +22,8 @@ import { Attribute } from "@tiptap/core";
 import { createNodeView } from "../react/index.js";
 import { AttachmentComponent } from "./component.js";
 import { Attachment } from "./types.js";
+import { tiptapKeys } from "@notesnook/common";
+import { hasPermission } from "../../types.js";
 
 export type AttachmentType = "image" | "file" | "camera";
 export interface AttachmentOptions {
@@ -109,6 +111,10 @@ export const AttachmentNode = Node.create<AttachmentOptions>({
       insertAttachment:
         (attachment) =>
         ({ commands, state }) => {
+          if (!hasPermission("insertAttachment")) {
+            return false;
+          }
+
           const { $from } = state.selection;
           const maybeAttachmentNode = state.doc.nodeAt($from.pos);
           if (maybeAttachmentNode?.type === this.type) {
@@ -161,7 +167,7 @@ export const AttachmentNode = Node.create<AttachmentOptions>({
 
   addKeyboardShortcuts() {
     return {
-      "Mod-Shift-A": () =>
+      [tiptapKeys.addAttachment.keys]: () =>
         this.editor.storage.openAttachmentPicker?.("file") || true
     };
   }

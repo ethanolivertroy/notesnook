@@ -1,5 +1,5 @@
 import { execSync } from "child_process";
-
+//@ts-ignore
 import { pathExists, ensureDir } from "fs-extra";
 
 import { resolveConfig } from "detox/internals";
@@ -7,6 +7,8 @@ import { globalSetup } from "detox/runners/jest";
 
 export default async function customGlobalSetup() {
   const config = await resolveConfig();
+  //@ts-ignore
+  globalThis["DEBUG_MODE"] = config.configurationName;
   if (config.device.type === "android.emulator") {
     await downloadTestButlerAPK();
   }

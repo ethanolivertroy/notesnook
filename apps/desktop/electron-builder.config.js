@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 const path = require("path");
+const pkg = require("./package.json");
 
 const buildRoot = process.env.NN_BUILD_ROOT || ".";
 const buildFiles = [
@@ -35,14 +36,22 @@ const linuxExecutableName = process.env.NN_PRODUCT_NAME
   ? process.env.NN_PRODUCT_NAME.toLowerCase().replace(/\s+/g, "-")
   : "notesnook";
 const year = new Date().getFullYear();
+const isBeta = pkg.version.includes("-beta");
 
+/**
+ * @type {import("app-builder-lib").Configuration}
+ */
 module.exports = {
   appId: appId,
   productName: productName,
   copyright: `Copyright © ${year} Streetwriters (Private) Limited`,
   artifactName: "notesnook_${os}_${arch}.${ext}",
   generateUpdatesFilesForAllChannels: true,
-  asar: false,
+  asar: true,
+  asarUnpack: [
+    "node_modules/sqlite-better-trigram-@(linux|darwin|windows)-${arch}/**/*",
+    "node_modules/sqlite3-fts5-html-@(linux|darwin|windows)-${arch}/**/*"
+  ],
   files: [
     "!*.chunk.js.map",
     "!*.chunk.js.LICENSE.txt",
@@ -55,6 +64,7 @@ module.exports = {
     "node_modules/bindings",
     "node_modules/node-gyp-build",
     "node_modules/sqlite-better-trigram",
+    "node_modules/sqlite3-fts5-html",
     "node_modules/sodium-native/prebuilds/${platform}-${arch}",
     {
       from: "node_modules/sqlite-better-trigram-linux-${arch}",
@@ -68,6 +78,20 @@ module.exports = {
       from: "node_modules/sqlite-better-trigram-windows-${arch}",
       to: "node_modules/sqlite-better-trigram-windows-${arch}"
     },
+
+    {
+      from: "node_modules/sqlite3-fts5-html-linux-${arch}",
+      to: "node_modules/sqlite3-fts5-html-linux-${arch}"
+    },
+    {
+      from: "node_modules/sqlite3-fts5-html-darwin-${arch}",
+      to: "node_modules/sqlite3-fts5-html-darwin-${arch}"
+    },
+    {
+      from: "node_modules/sqlite3-fts5-html-windows-${arch}",
+      to: "node_modules/sqlite3-fts5-html-windows-${arch}"
+    },
+
     "node_modules/sodium-native/index.js",
     "node_modules/sodium-native/package.json"
   ],
@@ -158,29 +182,27 @@ module.exports = {
     description: "Your private note taking space",
     executableName: linuxExecutableName,
     desktop: {
-      actions: [
-        {
-          id: "new-note",
-          name: "New note",
-          args: "new note"
+      desktopActions: {
+        "new-note": {
+          Name: "New note",
+          Exec: `${linuxExecutableName} new note`
         },
-        {
-          id: "new-notebook",
-          name: "New notebook",
-          args: "new notebook"
+        "new-notebook": {
+          Name: "New notebook",
+          Exec: `${linuxExecutableName} new notebook`
         },
-        {
-          id: "new-reminder",
-          name: "New reminder",
-          args: "new reminder"
+        "new-reminder": {
+          Name: "New reminder",
+          Exec: `${linuxExecutableName} new reminder`
         }
-      ]
+      }
     }
   },
   snap: {
     autoStart: false,
     confinement: "strict",
-    allowNativeWayland: true
+    allowNativeWayland: true,
+    base: "core22"
   },
   extraResources: ["app-update.yml", "./assets/**"],
   extraMetadata: {
@@ -194,7 +216,8 @@ module.exports = {
     {
       provider: "github",
       repo: "notesnook",
-      owner: "streetwriters"
+      owner: "streetwriters",
+      channel: isBeta ? "beta" : "latest"
     }
   ]
 };

@@ -41,6 +41,8 @@ import useNavigationStore, {
 } from "../../stores/use-navigation-store";
 import { setOnFirstSave } from "./common";
 import { strings } from "@notesnook/intl";
+import { useSettingStore } from "../../stores/use-setting-store";
+import { rootNavigatorRef } from "../../utils/global-refs";
 
 export interface RouteProps<T extends RouteName> extends NavigationProps<T> {
   get: (
@@ -83,6 +85,7 @@ const NotesPage = ({
       ? (params.current?.item as Color)?.colorCode
       : undefined;
   const updateOnFocus = useRef(false);
+  const isAppLoading = useSettingStore((state) => state.isAppLoading);
   const isFocused = useNavigationFocus(navigation, {
     onFocus: (prev) => {
       if (updateOnFocus.current) {
@@ -118,7 +121,9 @@ const NotesPage = ({
 
   const onRequestUpdate = React.useCallback(
     async (data?: NotesScreenParams) => {
+      if (useSettingStore.getState().isAppLoading) return;
       if (
+        params.current.item.id &&
         useNavigationStore.getState().focusedRouteId !==
           params.current.item.id &&
         !data
@@ -142,12 +147,15 @@ const NotesPage = ({
           ](params.current.item.id);
 
           if (!item) {
-            Navigation.goBack();
+            if (rootNavigatorRef.canGoBack()) {
+              Navigation.goBack();
+            } else {
+              Navigation.navigate("Notes");
+            }
             return;
           }
 
           params.current.item = item;
-          params.current.title = item.title;
         }
 
         if (notes.placeholders.length === 0) setLoadingNotes(false);
@@ -163,6 +171,7 @@ const NotesPage = ({
   );
 
   useEffect(() => {
+    if (isAppLoading) return;
     if (loadingNotes) {
       get(params.current, true)
         .then(async (items) => {
@@ -174,7 +183,7 @@ const NotesPage = ({
           setLoadingNotes(false);
         });
     }
-  }, [loadingNotes, get]);
+  }, [loadingNotes, get, isAppLoading]);
 
   useEffect(() => {
     eSubscribeEvent(route.name, onRequestUpdate);
@@ -186,12 +195,6 @@ const NotesPage = ({
 
   return (
     <>
-      <SelectionHeader
-        id={route.params?.item?.id}
-        items={notes}
-        type="note"
-        renderedInRoute={route.name}
-      />
       <Header
         renderedInRoute={route.name}
         title={
@@ -216,9 +219,7 @@ const NotesPage = ({
             items: selector
           });
         }}
-        accentColor={accentColor}
         onPressDefaultRightButton={onPressFloatingButton}
-        headerRightButtons={rightButtons?.(params?.current)}
       />
 
       <DelayLayout color={accentColor} wait={loadingNotes}>
@@ -226,7 +227,7 @@ const NotesPage = ({
           data={notes}
           dataType="note"
           onRefresh={onRequestUpdate}
-          loading={!isFocused}
+          loading={false}
           renderedInRoute={route.name}
           id={params.current.item?.id}
           headerTitle={title || "Monographs"}
@@ -237,9 +238,19 @@ const NotesPage = ({
         {!isMonograph &&
         ((notes?.placeholders && (notes?.placeholders?.length || 0) > 0) ||
           isFocused) ? (
-          <FloatingButton color={accentColor} onPress={onPressFloatingButton} />
+          <FloatingButton
+            color={accentColor}
+            onPress={onPressFloatingButton}
+            alwaysVisible
+          />
         ) : null}
       </DelayLayout>
+      <SelectionHeader
+        id={route.params?.item?.id || route.name}
+        items={notes}
+        type="note"
+        renderedInRoute={route.name}
+      />
     </>
   );
 };

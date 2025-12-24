@@ -33,7 +33,7 @@ import {
   getColorLinearShade,
   hexToRGBA
 } from "../../../utils/colors";
-import { br } from "../../../utils/size";
+import { defaultBorderRadius } from "../../../utils/size";
 export interface PressableProps extends RNPressableProps {
   style?: ViewStyle;
   noborder?: boolean;
@@ -44,7 +44,7 @@ export interface PressableProps extends RNPressableProps {
   customSelectedColor?: ColorValue;
   customAlpha?: number;
   customOpacity?: number;
-  fwdRef?: RefObject<View>;
+  fwdRef?: RefObject<View | null>;
   hidden?: boolean;
 }
 
@@ -54,6 +54,7 @@ type ButtonTypes =
   | "accent"
   | "shade"
   | "secondary"
+  | "selectedAccent"
   | "secondaryAccented"
   | "inverted"
   | "white"
@@ -122,6 +123,18 @@ const buttonTypes = (
     borderColor: getColorLinearShade(colors.selected.background, 0.05, isDark),
     borderSelectedColor: getColorLinearShade(
       colors.selected.background,
+      0.05,
+      isDark
+    )
+  },
+  selectedAccent: {
+    primary: colors.selected.accent,
+    text: colors.selected.accentForeground,
+    selected: colors.selected.accent,
+    borderWidth: 0.8,
+    borderColor: getColorLinearShade(colors.selected.accent, 0.05, isDark),
+    borderSelectedColor: getColorLinearShade(
+      colors.selected.accent,
       0.05,
       isDark
     )
@@ -234,7 +247,8 @@ export const Pressable = ({
   customAlpha,
   customOpacity,
   fwdRef,
-  hidden
+  hidden,
+  ...props
 }: PressableProps) => {
   const { isDark } = useThemeColors();
   const {
@@ -254,8 +268,8 @@ export const Pressable = ({
   const opacity = customOpacity
     ? customOpacity
     : type === "accent"
-    ? 1
-    : colorOpacity;
+      ? 1
+      : colorOpacity;
   const alpha = customAlpha ? customAlpha : isDark ? 0.03 : -0.03;
   const { fontScale } = useWindowDimensions();
   const growFactor = 1 + (fontScale - 1) / 8;
@@ -269,17 +283,16 @@ export const Pressable = ({
             : hexToRGBA(primaryColor, opacity || 1),
         width: "100%",
         alignSelf: "center",
-        borderRadius: noborder ? 0 : br,
+        borderRadius: noborder ? 0 : defaultBorderRadius,
         justifyContent: "center",
         alignItems: "center",
         marginBottom: 0,
-        borderColor:
-          pressed && !disabled
-            ? customSelectedColor
-              ? getColorLinearShade(customSelectedColor, 0.3, false)
-              : borderSelectedColor || borderColor
-            : borderColor || "transparent",
-        borderWidth: borderWidth
+        borderColor: pressed
+          ? customSelectedColor
+            ? getColorLinearShade(customSelectedColor, 0.3, false)
+            : borderSelectedColor || borderColor
+          : borderColor || "transparent",
+        borderWidth: noborder ? 0 : borderWidth
       },
       style,
       {
@@ -307,6 +320,7 @@ export const Pressable = ({
 
   return hidden ? null : (
     <RNPressable
+      {...props}
       testID={testID}
       ref={fwdRef}
       disabled={disabled}

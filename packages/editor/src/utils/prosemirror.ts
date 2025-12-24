@@ -31,7 +31,10 @@ import {
   NodeType,
   ResolvedPos,
   Attrs,
-  Slice
+  Slice,
+  DOMParser,
+  Schema,
+  Fragment
 } from "prosemirror-model";
 import { EditorState, Selection, Transaction } from "prosemirror-state";
 import TextStyle from "@tiptap/extension-text-style";
@@ -344,4 +347,66 @@ export function getDeletedNodes(
     }
   }
   return nodes;
+}
+
+export function isClickWithinBounds(
+  e: MouseEvent | TouchEvent,
+  pos: ResolvedPos,
+  hitPosition: "left" | "right",
+  hitArea: { width: number; height: number } = { width: 40, height: 40 }
+) {
+  const { target } = e;
+  if (!(target instanceof HTMLElement)) return false;
+
+  const { x, y, right, width } = target.getBoundingClientRect();
+  const clientX = e instanceof MouseEvent ? e.clientX : e.touches[0].clientX;
+  const clientY = e instanceof MouseEvent ? e.clientY : e.touches[0].clientY;
+  const isRtl =
+    target.dir === "rtl" ||
+    findParentNodeClosestToPos(pos, (node) => !!node.attrs.textDirection)?.node
+      .attrs.textDirection === "rtl";
+
+  switch (hitPosition) {
+    case "left": {
+      let xStart = clientX >= x - hitArea.width;
+      let xEnd = clientX <= x;
+      const yStart = clientY >= y;
+      const yEnd = clientY <= y + hitArea.height;
+
+      if (isRtl) {
+        xEnd = clientX <= right + hitArea.width;
+        xStart = clientX >= right;
+      }
+
+      return xStart && xEnd && yStart && yEnd;
+    }
+    case "right": {
+      let xEnd = clientX <= x + width;
+      let xStart = clientX >= x + width - hitArea.width;
+      const yStart = clientY >= y;
+      const yEnd = clientY <= y + hitArea.height;
+
+      if (isRtl) {
+        xStart = clientX >= x;
+        xEnd = clientX <= x + hitArea.width;
+      }
+
+      return xStart && xEnd && yStart && yEnd;
+    }
+    default:
+      return false;
+  }
+}
+
+export function ensureLeadingParagraph(node: Node, schema: Schema): Fragment {
+  const parser = DOMParser.fromSchema(schema);
+  const fragment = parser.parse(node).content;
+  const firstNode = fragment.firstChild;
+
+  if (firstNode && firstNode.type.name !== "paragraph") {
+    const emptyParagraph = schema.nodes.paragraph.create();
+    return fragment.addToStart(emptyParagraph);
+  }
+
+  return fragment;
 }

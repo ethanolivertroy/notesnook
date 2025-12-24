@@ -19,14 +19,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { GroupingKey, Item, VirtualizedGrouping } from "@notesnook/core";
 import { useThemeColors } from "@notesnook/theme";
-import { FlashList } from "@shopify/flash-list";
+import { LegendList, LegendListRenderItemProps } from "@legendapp/list";
 import React, { useEffect, useRef } from "react";
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
-  RefreshControl
+  RefreshControl,
+  View
 } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
 import { notesnook } from "../../../e2e/test.ids";
 import { useGroupOptions } from "../../hooks/use-group-options";
 import { eSendEvent } from "../../services/event-manager";
@@ -34,15 +34,16 @@ import Sync from "../../services/sync";
 import { RouteName } from "../../stores/use-navigation-store";
 import { useSettingStore } from "../../stores/use-setting-store";
 import { eScrollEvent } from "../../utils/events";
-import { tabBarRef } from "../../utils/global-refs";
-import { Footer } from "../list-items/footer";
+import { fluidTabsRef } from "../../utils/global-refs";
 import { Header } from "../list-items/headers/header";
 import { Empty, PlaceholderData } from "./empty";
 import { ListItemWrapper } from "./list-item.wrapper";
+import { ScrollView } from "react-native-actions-sheet";
 
 type ListProps = {
   data: VirtualizedGrouping<Item> | undefined;
   dataType: Item["type"];
+  mode?: "drawer" | "sheet";
   onRefresh?: () => void;
   loading?: boolean;
   headerTitle?: string;
@@ -55,9 +56,13 @@ type ListProps = {
   id?: string;
 };
 
+const onMomentumScrollEnd = () => {
+  fluidTabsRef.current?.unlock();
+};
+
 export default function List(props: ListProps) {
   const { colors } = useThemeColors();
-  const scrollRef = useRef();
+  const scrollRef = useRef(null);
   const [notesListMode, notebooksListMode] = useSettingStore((state) => [
     state.settings.notesListMode,
     state.settings.notebooksListMode
@@ -72,10 +77,10 @@ export default function List(props: ListProps) {
     props.renderedInRoute === "Notes"
       ? "home"
       : props.renderedInRoute === "Favorites"
-      ? "favorites"
-      : props.renderedInRoute === "Trash"
-      ? "trash"
-      : `${props.dataType}s`;
+        ? "favorites"
+        : props.renderedInRoute === "Trash" || props.dataType === "trash"
+          ? "trash"
+          : `${props.dataType}s`;
 
   const groupOptions = useGroupOptions(groupType);
 
@@ -85,11 +90,18 @@ export default function List(props: ListProps) {
     });
   };
 
+  const getItemType = React.useCallback(
+    (item: number | boolean, index: number) => {
+      return props.data?.type(index);
+    },
+    []
+  );
+
   const renderItem = React.useCallback(
-    ({ index }: { index: number }) => {
+    (itemProps: LegendListRenderItemProps<any, any>) => {
       return (
         <ListItemWrapper
-          index={index}
+          index={itemProps.index}
           isSheet={props.isRenderedInActionSheet || false}
           items={props.data}
           groupOptions={groupOptions}
@@ -133,55 +145,41 @@ export default function List(props: ListProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const styles = {
-    width: "100%",
-    minHeight: 1,
-    minWidth: 1
-  };
-
-  const ListView = props.CustomListComponent
-    ? props.CustomListComponent
-    : FlashList;
-
   return (
     <>
-      <Animated.View
+      <View
         style={{
           flex: 1
         }}
-        entering={props.renderedInRoute === "Search" ? undefined : FadeInDown}
       >
-        <ListView
-          style={styles}
+        <LegendList
           ref={scrollRef}
+          contentContainerStyle={{
+            flexGrow: 1
+          }}
+          extraData={props.data}
           testID={notesnook.list.id}
           data={props.data?.placeholders || []}
+          renderScrollComponent={
+            props.isRenderedInActionSheet
+              ? (props) => <ScrollView {...props} />
+              : undefined
+          }
           renderItem={renderItem}
           onScroll={onListScroll}
           nestedScrollEnabled={true}
-          onMomentumScrollEnd={() => {
-            tabBarRef.current?.unlock();
-          }}
-          getItemType={(item: number, index: number) => {
-            return props.data?.type(index);
-          }}
+          onMomentumScrollEnd={onMomentumScrollEnd}
+          getItemType={getItemType}
           estimatedItemSize={isCompactModeEnabled ? 60 : 120}
           directionalLockEnabled={true}
           keyboardShouldPersistTaps="always"
           keyboardDismissMode="interactive"
-          refreshControl={
-            props.isRenderedInActionSheet ? null : (
-              <RefreshControl
-                tintColor={colors.primary.accent}
-                colors={[colors.primary.accent]}
-                progressBackgroundColor={colors.secondary.background}
-                onRefresh={_onRefresh}
-                refreshing={false}
-              />
-            )
-          }
           ListEmptyComponent={
-            props.placeholder ? (
+            <View
+              style={{
+                flex: 1
+              }}
+            >
               <Empty
                 loading={props.loading}
                 title={props.headerTitle}
@@ -190,10 +188,25 @@ export default function List(props: ListProps) {
                 placeholder={props.placeholder}
                 screen={props.renderedInRoute}
               />
-            ) : null
+            </View>
           }
           ListFooterComponent={
-            <Footer height={props.renderedInRoute === "Notebook" ? 300 : 150} />
+            <View
+              style={{ height: props.data?.placeholders?.length ? 100 : 0 }}
+            />
+          }
+          refreshControl={
+            props.isRenderedInActionSheet ? (
+              <></>
+            ) : (
+              <RefreshControl
+                tintColor={colors.primary.accent}
+                colors={[colors.primary.accent]}
+                progressBackgroundColor={colors.secondary.background}
+                onRefresh={_onRefresh}
+                refreshing={false}
+              />
+            )
           }
           ListHeaderComponent={
             <>
@@ -208,7 +221,7 @@ export default function List(props: ListProps) {
             </>
           }
         />
-      </Animated.View>
+      </View>
     </>
   );
 }

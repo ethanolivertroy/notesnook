@@ -22,13 +22,34 @@ import { strings } from "@notesnook/intl";
 import { Linking } from "react-native";
 import { db } from "../common/database";
 import { presentDialog } from "../components/dialog/functions";
+import {
+  useSideMenuNotebookSelectionStore,
+  useSideMenuTagsSelectionStore
+} from "../components/side-menu/stores";
 import { eSendEvent, ToastManager } from "../services/event-manager";
 import Navigation from "../services/navigation";
 import { useMenuStore } from "../stores/use-menu-store";
+import { useNotebookStore } from "../stores/use-notebook-store";
 import { useRelationStore } from "../stores/use-relation-store";
 import { useTagStore } from "../stores/use-tag-store";
-import { eOnNotebookUpdated, eUpdateNoteInEditor } from "./events";
-import { getParentNotebookId } from "./notebooks";
+import { eUpdateNoteInEditor } from "./events";
+import { unlockVault } from "./unlock-vault";
+
+export const valueLimiter = (value: number, min: number, max: number) => {
+  return value < min ? min : value > max ? max : value;
+};
+
+export function getObfuscatedEmail(email: string) {
+  if (!email) return "";
+  const [username, provider] = email.split("@");
+  if (username.length === 1) return `****@${provider}`;
+  return email.replace(/(.{3})(.*)(?=@)/, function (gp1, gp2, gp3) {
+    for (let i = 0; i < gp3.length; i++) {
+      gp2 += "*";
+    }
+    return gp2;
+  });
+}
 
 function confirmDeleteAllNotes(
   items: string[],
@@ -40,7 +61,7 @@ function confirmDeleteAllNotes(
       title: strings.doActions.delete.notebook(items.length),
       positiveText: strings.delete(),
       negativeText: strings.cancel(),
-      positivePress: (_inputValue, value) => {
+      positivePress: async (_inputValue, value) => {
         setTimeout(() => {
           resolve({ delete: true, deleteNotes: value });
         });
@@ -62,7 +83,6 @@ function confirmDeleteAllNotes(
 async function deleteNotebook(id: string, deleteNotes: boolean) {
   const notebook = await db.notebooks.notebook(id);
   if (!notebook) return;
-  const parentId = getParentNotebookId(id);
   if (deleteNotes) {
     const noteRelations = await db.relations.from(notebook, "note").get();
     if (noteRelations?.length) {
@@ -72,9 +92,6 @@ async function deleteNotebook(id: string, deleteNotes: boolean) {
     }
   }
   await db.notebooks.moveToTrash(id);
-  if (parentId) {
-    eSendEvent(eOnNotebookUpdated, parentId);
-  }
 }
 
 export const deleteItems = async (
@@ -86,6 +103,30 @@ export const deleteItems = async (
     await db.reminders.remove(...itemIds);
     useRelationStore.getState().update();
   } else if (type === "note") {
+    let someNotesLocked = false;
+
+    for (const id of itemIds) {
+      if (
+        await db.vaults.itemExists({
+          id: id,
+          type: "note"
+        })
+      ) {
+        someNotesLocked = true;
+        break;
+      }
+    }
+
+    if (someNotesLocked) {
+      const unlocked = await unlockVault({
+        title: strings.unlockVault(),
+        paragraph: strings.unlockVaultDesc(),
+        context: "global",
+        requirePassword: true
+      });
+      if (!unlocked) return;
+    }
+
     for (const id of itemIds) {
       if (db.monographs.isPublished(id)) {
         ToastManager.show({
@@ -96,6 +137,7 @@ export const deleteItems = async (
         });
         continue;
       }
+
       await db.notes.moveToTrash(id);
 
       eSendEvent(
@@ -113,8 +155,11 @@ export const deleteItems = async (
     if (!result.delete) return;
     for (const id of itemIds) {
       await deleteNotebook(id, result.deleteNotes);
-      eSendEvent(eOnNotebookUpdated, await getParentNotebookId(id));
     }
+    useSideMenuNotebookSelectionStore.setState({
+      enabled: false,
+      selection: {}
+    });
   } else if (type === "tag") {
     presentDialog({
       title: strings.doActions.delete.tag(itemIds.length),
@@ -125,6 +170,10 @@ export const deleteItems = async (
         await db.tags.remove(...itemIds);
         useTagStore.getState().refresh();
         useRelationStore.getState().update();
+        useSideMenuTagsSelectionStore.setState({
+          enabled: false,
+          selection: {}
+        });
       },
       context: context
     });
@@ -138,15 +187,13 @@ export const deleteItems = async (
       heading: message,
       type: "success",
       func: async () => {
-        if ((await db.trash.restore(...deletedIds)) === false) return;
+        await db.trash.restore(...deletedIds);
         Navigation.queueRoutesForUpdate();
         useMenuStore.getState().setMenuPins();
         useMenuStore.getState().setColorNotes();
         ToastManager.hide();
         if (type === "notebook") {
-          deletedIds.forEach(async (id) => {
-            eSendEvent(eOnNotebookUpdated, await getParentNotebookId(id));
-          });
+          useNotebookStore.getState().refresh();
         }
       },
       actionText: "Undo"
@@ -161,11 +208,9 @@ export const deleteItems = async (
   Navigation.queueRoutesForUpdate();
   useMenuStore.getState().setColorNotes();
   if (type === "notebook") {
-    itemIds.forEach(async (id) => {
-      eSendEvent(eOnNotebookUpdated, await getParentNotebookId(id));
-    });
-    useMenuStore.getState().setMenuPins();
+    useNotebookStore.getState().refresh();
   }
+  useMenuStore.getState().setMenuPins();
 };
 
 export const openLinkInBrowser = async (link: string) => {

@@ -17,7 +17,12 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { debounce, usePromise } from "@notesnook/common";
+import {
+  debounce,
+  formatKey,
+  keybindings,
+  usePromise
+} from "@notesnook/common";
 import { EVENTS, fuzzy, Note, Notebook, Reminder, Tag } from "@notesnook/core";
 import { Box, Button, Flex, Input, Text } from "@theme-ui/components";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -117,8 +122,35 @@ export const CommandPaletteDialog = DialogManager.register(
           }}
           onKeyDown={(e) => {
             if (commands.status !== "fulfilled") return;
+            if (e.key === "Delete") {
+              e.preventDefault();
+              const command = commands.value.commands[selected];
+              if (!command) return;
+              if (command.group !== "recent") return;
+              removeRecentCommand(command.id);
+              getDefaultCommands().then((resolved) => {
+                defaultCommands.current = resolved;
+                commands.refresh();
+              });
+              return;
+            }
             if (e.key == "Enter") {
               e.preventDefault();
+
+              if (e.shiftKey && !props.isCommandMode) {
+                useEditorStore.getState().addTab();
+                if (query) {
+                  const activeSessionId = useEditorStore
+                    .getState()
+                    .getActiveSession()?.id;
+                  if (activeSessionId) {
+                    useEditorStore.getState().setTitle(activeSessionId, query);
+                  }
+                }
+                props.onClose(false);
+                return;
+              }
+
               const command = commands.value.commands[selected];
               if (!command) return;
               command.action?.(command, {
@@ -161,7 +193,6 @@ export const CommandPaletteDialog = DialogManager.register(
           />
           <GroupedVirtuoso
             ref={virtuosoRef}
-            style={{ overflow: "hidden" }}
             components={{
               Scroller: CustomScrollbarsVirtualList,
               Footer: () => (
@@ -517,7 +548,10 @@ function getCommandPaletteHelp(isCommandMode: boolean) {
     ...(isCommandMode
       ? [
           {
-            key: isMac() ? "⌘P" : "Ctrl+P",
+            key: keybindings.openQuickOpen
+              .keys(IS_DESKTOP_APP)
+              .map((k) => formatKey(k, isMac(), "+"))
+              .join(" / "),
             description: strings.quickOpen()
           }
         ]
@@ -527,7 +561,14 @@ function getCommandPaletteHelp(isCommandMode: boolean) {
             description: strings.openInNewTab()
           },
           {
-            key: isMac() ? "⌘K" : "Ctrl+K",
+            key: "Shift+⏎",
+            description: strings.createNewNote()
+          },
+          {
+            key: keybindings.openCommandPalette
+              .keys(IS_DESKTOP_APP)
+              .map((k) => formatKey(k, isMac(), "+"))
+              .join(" / "),
             description: strings.commandPalette()
           }
         ])

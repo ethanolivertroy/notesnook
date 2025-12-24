@@ -18,14 +18,18 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import Sodium from "@ammarahmed/react-native-sodium";
+import { isFeatureAvailable } from "@notesnook/common";
 import { isImage } from "@notesnook/core";
+import { strings } from "@notesnook/intl";
+import {
+  pick as pickFile,
+  DocumentPickerOptions,
+  DocumentPickerResponse,
+  keepLocalCopy
+} from "@react-native-documents/picker";
 import { basename } from "pathe";
 import { Platform } from "react-native";
 import RNFetchBlob from "react-native-blob-util";
-import DocumentPicker, {
-  DocumentPickerOptions,
-  DocumentPickerResponse
-} from "react-native-document-picker";
 import { Image, openCamera, openPicker } from "react-native-image-crop-picker";
 import { DatabaseLogger, db } from "../../../common/database";
 import filesystem from "../../../common/filesystem";
@@ -38,17 +42,15 @@ import {
 } from "../../../services/event-manager";
 import PremiumService from "../../../services/premium";
 import { useSettingStore } from "../../../stores/use-setting-store";
-import { FILE_SIZE_LIMIT, IMAGE_SIZE_LIMIT } from "../../../utils/constants";
+import { useUserStore } from "../../../stores/use-user-store";
 import { eCloseSheet } from "../../../utils/events";
 import { useTabStore } from "./use-tab-store";
 import { editorController, editorState } from "./utils";
-import { strings } from "@notesnook/intl";
-import { useUserStore } from "../../../stores/use-user-store";
 
 const showEncryptionSheet = (file: DocumentPickerResponse) => {
   presentSheet({
     title: strings.encryptingAttachment(),
-    paragraph: strings.encryptingAttachmentDesc(file.name),
+    paragraph: strings.encryptingAttachmentDesc(file.name || ""),
     icon: "attachment"
   });
 };
@@ -71,40 +73,49 @@ type PickerOptions = {
 
 const file = async (fileOptions: PickerOptions) => {
   try {
-    const options: DocumentPickerOptions<"ios"> = {
+    const options: DocumentPickerOptions = {
       mode: "import",
       allowMultiSelection: false
     };
-    if (Platform.OS === "ios") {
-      options.copyTo = "cachesDirectory";
-    }
     await db.attachments.generateKey();
 
     let file;
+    let fileCopyUri;
+    let fileName;
     try {
       useSettingStore.getState().setAppDidEnterBackgroundForAction(true);
-      file = await DocumentPicker.pick(options);
+      file = (await pickFile(options))[0];
+      fileName = file.name ?? "attachment_" + Date.now();
+      const result = await keepLocalCopy({
+        files: [
+          {
+            uri: file.uri,
+            fileName: fileName
+          }
+        ],
+        destination: "cachesDirectory"
+      });
+      fileCopyUri = result[0];
     } catch (e) {
       return;
     }
 
-    file = file[0];
+    let uri =
+      Platform.OS === "ios" ? fileCopyUri.sourceUri || file.uri : file.uri;
 
-    let uri = Platform.OS === "ios" ? file.fileCopyUri || file.uri : file.uri;
-
-    if ((file.size || 0) > FILE_SIZE_LIMIT) {
+    const featureResult = await isFeatureAvailable("fileSize", file.size || 0);
+    if (!featureResult.isAllowed) {
       ToastManager.show({
         heading: strings.fileTooLarge(),
-        message: strings.fileTooLargeDesc(500),
+        message: featureResult.error,
         type: "error"
       });
-      return;
     }
 
-    if (file.copyError) {
+    if (fileCopyUri.status === "error") {
       ToastManager.show({
         heading: strings.failToOpen(),
-        message: file.copyError,
+        message: "Error copying file",
         type: "error",
         context: "global"
       });
@@ -122,7 +133,7 @@ const file = async (fileOptions: PickerOptions) => {
         uri,
         hash,
         file.type || "application/octet-stream",
-        file.name,
+        fileName,
         fileOptions
       ))
     ) {
@@ -139,7 +150,7 @@ const file = async (fileOptions: PickerOptions) => {
         editorController.current?.commands.insertImage(
           {
             hash: hash,
-            filename: file.name,
+            filename: fileName,
             mime: file.type || "application/octet-stream",
             size: file.size || 0,
             dataurl: (await db.attachments.read(hash, "base64")) as string,
@@ -151,7 +162,7 @@ const file = async (fileOptions: PickerOptions) => {
         editorController.current?.commands.insertAttachment(
           {
             hash: hash,
-            filename: file.name,
+            filename: fileName,
             mime: file.type || "application/octet-stream",
             size: file.size || 0,
             type: "file"
@@ -194,7 +205,9 @@ const camera = async (options: PickerOptions) => {
           options
         );
       })
-      .catch((e) => {});
+      .catch((e) => {
+        console.log(e);
+      });
   } catch (e) {
     ToastManager.show({
       heading: (e as Error).message,
@@ -234,25 +247,22 @@ const gallery = async (options: PickerOptions) => {
 };
 
 const pick = async (options: PickerOptions) => {
-  if (!PremiumService.get()) {
-    const user = await db.user.getUser();
-    if (!user) {
-      ToastManager.show({
-        heading: strings.loginRequired(),
-        type: "error"
-      });
-      return;
-    }
-    if (editorState().isFocused) {
-      editorState().isFocused = true;
-    }
-    if (user && !PremiumService.get() && !user?.isEmailConfirmed) {
-      PremiumService.showVerifyEmailDialog();
-    } else {
-      PremiumService.sheet();
-    }
+  const user = await db.user.getUser();
+  if (!user) {
+    ToastManager.show({
+      heading: strings.loginRequired(),
+      type: "error"
+    });
     return;
   }
+  if (editorState().isFocused) {
+    editorState().isFocused = true;
+  }
+  if (user && !user?.isEmailConfirmed) {
+    PremiumService.showVerifyEmailDialog();
+    return;
+  }
+
   useUserStore.getState().setDisableAppLockRequests(true);
   if (options?.type.startsWith("image") || options?.type === "camera") {
     if (options.type.startsWith("image")) {
@@ -290,14 +300,15 @@ const handleImageResponse = async (
         Platform.OS === "ios" ? image.path.replace("file://", "") : image.path;
     }
 
-    if (image.size > IMAGE_SIZE_LIMIT) {
+    const featureResult = await isFeatureAvailable("fileSize", image.size || 0);
+    if (!featureResult.isAllowed) {
       ToastManager.show({
         heading: strings.fileTooLarge(),
-        message: strings.fileTooLargeDesc(50),
+        message: featureResult.error,
         type: "error"
       });
-      return;
     }
+
     const b64 = `data:${image.mime};base64, ` + image.data;
     const uri = decodeURI(image.path);
     const hash = await Sodium.hashFile({

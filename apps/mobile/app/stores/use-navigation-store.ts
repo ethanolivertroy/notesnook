@@ -17,9 +17,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { FilteredSelector } from "@notesnook/core";
 import {
   Color,
+  FilteredSelector,
   Item,
   ItemType,
   Note,
@@ -28,19 +28,20 @@ import {
   Tag,
   TrashItem
 } from "@notesnook/core";
-import create, { State } from "zustand";
+import { ParamListBase } from "@react-navigation/core";
+import { create } from "zustand";
 
-export type GenericRouteParam = undefined;
+export type GenericRouteParam = {
+  canGoBack?: boolean;
+};
 
 export type NotebookScreenParams = {
   item: Notebook;
-  title: string;
   canGoBack?: boolean;
 };
 
 export type NotesScreenParams = {
   item: Note | Notebook | Tag | Color | TrashItem | Reminder;
-  title: string;
   canGoBack?: boolean;
 };
 
@@ -51,11 +52,17 @@ export type AppLockRouteParams = {
 
 export type AuthParams = {
   mode: number;
-  title: string;
-  canGoBack?: boolean;
+  context?: "intro";
+  state?: BillingState;
 };
 
-export type RouteParams = {
+export type BillingState = {
+  productId?: string;
+  planId?: string;
+  billingType?: "annual" | "monthly";
+};
+
+export interface RouteParams extends ParamListBase {
   Notes: GenericRouteParam;
   Notebooks: {
     canGoBack?: boolean;
@@ -72,15 +79,41 @@ export type RouteParams = {
     route: RouteName;
     items?: FilteredSelector<Item>;
   };
-  Settings: GenericRouteParam;
   TaggedNotes: NotesScreenParams;
   ColoredNotes: NotesScreenParams;
   TopicNotes: NotesScreenParams;
+  Archive: GenericRouteParam;
   Monographs: NotesScreenParams;
-  AppLock: AppLockRouteParams;
   Reminders: GenericRouteParam;
   SettingsGroup: GenericRouteParam;
-};
+  FluidPanelsView: GenericRouteParam;
+  AppLock: GenericRouteParam;
+  Settings: GenericRouteParam;
+  Auth: AuthParams;
+  LinkNotebooks: {
+    noteIds: string[];
+  };
+  MoveNotebook: {
+    selectedNotebooks: Notebook[];
+  };
+  MoveNotes: {
+    notebook: Notebook;
+  };
+  ManageTags: {
+    ids?: string[];
+  };
+  AddReminder: {
+    reminder?: Reminder;
+    reference?: Note;
+  };
+  Intro: GenericRouteParam;
+  PayWall: {
+    canGoBack?: boolean;
+    context: "signup" | "logged-in" | "logged-out" | "subscribed";
+    state?: BillingState;
+  };
+  Wrapped: GenericRouteParam;
+}
 
 export type RouteName = keyof RouteParams;
 
@@ -89,7 +122,7 @@ export type HeaderRightButton = {
   onPress: () => void;
 };
 
-interface NavigationStore extends State {
+interface NavigationStore {
   currentRoute: RouteName;
   canGoBack?: boolean;
   focusedRouteId?: string;

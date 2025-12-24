@@ -20,24 +20,25 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import React, { RefObject, useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 
+import { LegendList } from "@legendapp/list";
 import { getFormattedDate, getTimeAgo } from "@notesnook/common";
 import { HistorySession, Note, VirtualizedGrouping } from "@notesnook/core";
+import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
-import { ActionSheetRef } from "react-native-actions-sheet";
-import { FlashList } from "react-native-actions-sheet/dist/src/views/FlashList";
+import { ActionSheetRef, ScrollView } from "react-native-actions-sheet";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { db } from "../../common/database";
 import { useDBItem } from "../../hooks/use-db-item";
 import { presentSheet } from "../../services/event-manager";
 import { openLinkInBrowser } from "../../utils/functions";
-import { SIZE } from "../../utils/size";
+import { AppFontSize } from "../../utils/size";
+import { DefaultAppStyles } from "../../utils/styles";
 import DialogHeader from "../dialog/dialog-header";
 import SheetProvider from "../sheet-provider";
 import { Pressable } from "../ui/pressable";
 import Seperator from "../ui/seperator";
 import Paragraph from "../ui/typography/paragraph";
 import NotePreview from "./preview";
-import { strings } from "@notesnook/intl";
 
 const HistoryItem = ({
   index,
@@ -88,16 +89,16 @@ const HistoryItem = ({
       style={{
         justifyContent: "space-between",
         alignItems: "center",
-        paddingHorizontal: 12,
+        paddingHorizontal: DefaultAppStyles.GAP,
         height: 45,
-        marginBottom: 10,
+        marginBottom: DefaultAppStyles.GAP_VERTICAL,
         flexDirection: "row"
       }}
     >
       {!item ? null : (
         <>
           <Paragraph>{getDate(item.dateCreated, item.dateModified)}</Paragraph>
-          <Paragraph color={colors.secondary.paragraph} size={SIZE.xs}>
+          <Paragraph color={colors.secondary.paragraph} size={AppFontSize.xs}>
             {getTimeAgo(item.dateModified)}
           </Paragraph>
         </>
@@ -148,16 +149,18 @@ export default function NoteHistory({
 
       <View
         style={{
-          paddingHorizontal: 12,
+          paddingHorizontal: DefaultAppStyles.GAP,
           height: !history?.placeholders.length
             ? 300
             : (history.placeholders.length + 1) * 55,
           maxHeight: "100%"
         }}
       >
-        <FlashList
-          data={history?.placeholders}
+        <LegendList
+          renderScrollComponent={(props) => <ScrollView {...props} />}
+          data={history?.placeholders || []}
           estimatedItemSize={55}
+          extraData={history}
           ListEmptyComponent={
             <View
               style={{
@@ -170,7 +173,7 @@ export default function NoteHistory({
             >
               {_loading ? (
                 <ActivityIndicator
-                  size={SIZE.xl}
+                  size={AppFontSize.xl}
                   color={colors.primary.accent}
                 />
               ) : (
@@ -187,7 +190,7 @@ export default function NoteHistory({
         />
       </View>
       <Paragraph
-        size={SIZE.xs}
+        size={AppFontSize.xs}
         color={colors.secondary.paragraph}
         style={{
           alignSelf: "center"

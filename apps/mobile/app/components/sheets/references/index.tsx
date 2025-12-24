@@ -16,32 +16,36 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+import { LegendList } from "@legendapp/list";
 import {
+  ContentBlock,
   InternalLink,
+  ItemReference,
+  Note,
   TextSlice,
   VirtualizedGrouping,
   createInternalLink,
   highlightInternalLinks
 } from "@notesnook/core";
-import { ContentBlock, ItemReference, Note } from "@notesnook/core";
+import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React, { MutableRefObject, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { FlashList } from "react-native-actions-sheet/dist/src/views/FlashList";
-import create from "zustand";
+import { ScrollView } from "react-native-actions-sheet";
+import { create } from "zustand";
 import { db } from "../../../common/database";
 import { useDBItem, useNoteLocked } from "../../../hooks/use-db-item";
 import { eSendEvent, presentSheet } from "../../../services/event-manager";
 import { useRelationStore } from "../../../stores/use-relation-store";
 import { eOnLoadNote } from "../../../utils/events";
-import { tabBarRef } from "../../../utils/global-refs";
-import { SIZE } from "../../../utils/size";
+import { fluidTabsRef } from "../../../utils/global-refs";
+import { AppFontSize, defaultBorderRadius } from "../../../utils/size";
+import { DefaultAppStyles } from "../../../utils/styles";
 import SheetProvider from "../../sheet-provider";
 import { Button } from "../../ui/button";
 import { IconButton } from "../../ui/icon-button";
 import { Pressable } from "../../ui/pressable";
 import Paragraph from "../../ui/typography/paragraph";
-import { strings } from "@notesnook/intl";
 
 export const useExpandedStore = create<{
   expanded: {
@@ -80,7 +84,7 @@ const ListBlockItem = ({
         paddingLeft: 35,
         justifyContent: "flex-start",
         minHeight: 45,
-        paddingHorizontal: 12
+        paddingHorizontal: DefaultAppStyles.GAP
       }}
     >
       <View
@@ -100,13 +104,13 @@ const ListBlockItem = ({
           {item?.content.length > 200
             ? item?.content.slice(0, 200) + "..."
             : !item.content || item.content.trim() === ""
-            ? strings.linkNoteEmptyBlock()
-            : item.content}
+              ? strings.linkNoteEmptyBlock()
+              : item.content}
         </Paragraph>
 
         <View
           style={{
-            borderRadius: 5,
+            borderRadius: defaultBorderRadius,
             backgroundColor: colors.secondary.background,
             width: 25,
             height: 25,
@@ -114,7 +118,7 @@ const ListBlockItem = ({
             justifyContent: "center"
           }}
         >
-          <Paragraph color={colors.secondary.paragraph} size={SIZE.xs}>
+          <Paragraph color={colors.secondary.paragraph} size={AppFontSize.xs}>
             {item.type.toUpperCase()}
           </Paragraph>
         </View>
@@ -327,7 +331,7 @@ const ListNoteItem = ({
         }}
       >
         <IconButton
-          size={SIZE.xl}
+          size={AppFontSize.xl}
           onPress={() => {
             if (!item?.id) return;
             useExpandedStore.getState().setExpanded(item?.id);
@@ -354,7 +358,10 @@ const ListNoteItem = ({
           }}
         >
           {loading ? (
-            <ActivityIndicator color={colors.primary.accent} size={SIZE.lg} />
+            <ActivityIndicator
+              color={colors.primary.accent}
+              size={AppFontSize.lg}
+            />
           ) : (
             <>
               {listType === "linkedNotes" ? (
@@ -397,7 +404,7 @@ export const ReferencesList = ({ item, close }: ReferencesListProps) => {
   const { colors } = useThemeColors();
   const [items, setItems] = useState<VirtualizedGrouping<Note>>();
   const hasNoRelations = !items || items?.placeholders?.length === 0;
-  const internalLinks = useRef<InternalLink<"note">[]>();
+  const internalLinks = useRef<InternalLink<"note">[]>([]);
 
   useEffect(() => {
     db.relations?.[tab === 0 ? "from" : "to"]?.(
@@ -423,7 +430,7 @@ export const ReferencesList = ({ item, close }: ReferencesListProps) => {
             item: note,
             blockId: blockId
           });
-          tabBarRef.current?.goToPage(1);
+          fluidTabsRef.current?.goToPage("editor");
           close?.();
         }}
         reference={item as Note}
@@ -492,14 +499,16 @@ export const ReferencesList = ({ item, close }: ReferencesListProps) => {
       ) : (
         <View
           style={{
-            paddingHorizontal: 12,
+            paddingHorizontal: DefaultAppStyles.GAP,
             flex: 1,
-            marginTop: 10
+            marginTop: DefaultAppStyles.GAP_VERTICAL
           }}
         >
-          <FlashList
+          <LegendList
+            renderScrollComponent={(props) => <ScrollView {...props} />}
             bounces={false}
-            data={items.placeholders}
+            data={items.placeholders || []}
+            extraData={items}
             renderItem={renderNote}
           />
         </View>

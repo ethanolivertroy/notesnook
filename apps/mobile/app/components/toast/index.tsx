@@ -37,15 +37,16 @@ import {
 } from "../../services/event-manager";
 import { getElevationStyle } from "../../utils/elevation";
 import { eHideToast, eShowToast } from "../../utils/events";
-import { SIZE } from "../../utils/size";
+import { AppFontSize, defaultBorderRadius } from "../../utils/size";
 import { Button } from "../ui/button";
 import Heading from "../ui/typography/heading";
 import Paragraph from "../ui/typography/paragraph";
+import { DefaultAppStyles } from "../../utils/styles";
 
 export const Toast = ({ context = "global" }) => {
   const { colors, isDark } = useThemeColors();
   const [toastOptions, setToastOptions] = useState<ToastOptions | undefined>();
-  const hideTimeout = useRef<NodeJS.Timeout | undefined>();
+  const hideTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
   const insets = useGlobalSafeAreaInsets();
   const [visible, setVisible] = useState(false);
   const toastMessages = useRef<ToastOptions[]>([]);
@@ -133,14 +134,14 @@ export const Toast = ({ context = "global" }) => {
           ...getElevationStyle(5),
           backgroundColor: isDark ? colors.static.black : colors.static.white,
           alignSelf: "center",
-          borderRadius: 100,
-          paddingVertical: 12,
-          paddingHorizontal: 12,
+          borderRadius: defaultBorderRadius * 2,
+          paddingVertical: DefaultAppStyles.GAP_VERTICAL,
+          paddingHorizontal: DefaultAppStyles.GAP,
           justifyContent: "space-between",
           flexDirection: "row",
           alignItems: "center",
-          maxWidth: "95%",
-          gap: 10,
+          maxWidth: "90%",
+          gap: DefaultAppStyles.GAP_SMALL,
           flexShrink: 1
         }}
       >
@@ -148,7 +149,7 @@ export const Toast = ({ context = "global" }) => {
           style={{
             flexDirection: "row",
             alignItems: "center",
-            gap: 10,
+            gap: DefaultAppStyles.GAP_SMALL,
             flexShrink: 1
           }}
         >
@@ -157,35 +158,34 @@ export const Toast = ({ context = "global" }) => {
               toastOptions.icon
                 ? toastOptions.icon
                 : toastOptions.type === "success"
-                ? "check"
-                : toastOptions.type === "info"
-                ? "information"
-                : "close"
+                  ? "check"
+                  : toastOptions.type === "info"
+                    ? "information"
+                    : "close"
             }
-            size={isFullToastMessage ? SIZE.xxxl : SIZE.xl}
+            size={isFullToastMessage ? AppFontSize.xxxl : AppFontSize.xl}
             color={
               toastOptions?.icon
                 ? toastOptions?.icon
                 : toastOptions.type === "error"
-                ? colors.error.icon
-                : toastOptions.type === "info"
-                ? isDark
-                  ? colors.static.white
-                  : colors.static.black
-                : colors.success.icon
+                  ? colors.error.icon
+                  : toastOptions.type === "info"
+                    ? isDark
+                      ? colors.static.white
+                      : colors.static.black
+                    : colors.success.icon
             }
           />
 
           <View
             style={{
-              paddingRight: toastOptions?.func ? 0 : 12,
               flexShrink: 1
             }}
           >
             {isFullToastMessage ? (
               <Heading
                 color={!isDark ? colors.static.black : colors.static.white}
-                size={SIZE.sm}
+                size={AppFontSize.sm}
               >
                 {toastOptions.heading}
               </Heading>
@@ -194,7 +194,7 @@ export const Toast = ({ context = "global" }) => {
             {toastOptions.message || toastOptions.heading ? (
               <Paragraph
                 color={!isDark ? colors.static.black : colors.static.white}
-                size={SIZE.xs}
+                size={AppFontSize.sm}
               >
                 {toastOptions.message || toastOptions.heading}
               </Paragraph>
@@ -205,8 +205,10 @@ export const Toast = ({ context = "global" }) => {
         {toastOptions.func ? (
           <Button
             testID={notesnook.toast.button}
-            fontSize={SIZE.md}
-            type={toastOptions.type === "error" ? "errorShade" : "transparent"}
+            fontSize={AppFontSize.xs}
+            type={
+              toastOptions.type === "error" ? "errorShade" : "secondaryAccented"
+            }
             onPress={toastOptions.func}
             title={toastOptions.actionText}
             height={35}

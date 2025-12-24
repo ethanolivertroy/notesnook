@@ -19,8 +19,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 
-import { i18n } from "@lingui/core";
-import { strings } from "@notesnook/intl";
 import React, {
   forwardRef,
   useCallback,
@@ -48,7 +46,6 @@ import {
   eUnlockWithPassword
 } from "../../utils/events";
 import { openLinkInBrowser } from "../../utils/functions";
-import { tabBarRef } from "../../utils/global-refs";
 import EditorOverlay from "./loading";
 import { EDITOR_URI } from "./source";
 import { EditorProps, useEditorType } from "./tiptap/types";
@@ -61,6 +58,11 @@ import {
   openInternalLink,
   randId
 } from "./tiptap/utils";
+import { fluidTabsRef } from "../../utils/global-refs";
+import { strings } from "@notesnook/intl";
+import { i18n } from "@lingui/core";
+import { useVaultStatus } from "../../hooks/use-vault-status";
+import { useSettingStore } from "../../stores/use-setting-store";
 
 const style: ViewStyle = {
   height: "100%",
@@ -197,6 +199,7 @@ const Editor = React.memo(
 export default Editor;
 
 const useLockedNoteHandler = () => {
+  const vaultStatus = useVaultStatus();
   const tab = useTabStore((state) => state.getTab(state.currentTab));
   const tabRef = useRef(tab);
   tabRef.current = tab;
@@ -217,21 +220,18 @@ const useLockedNoteHandler = () => {
 
   useEffect(() => {
     (async () => {
-      const biometry = await BiometricService.isBiometryAvailable();
-      const fingerprint = await BiometricService.hasInternetCredentials();
       useTabStore.setState({
-        biometryAvailable: !!biometry,
-        biometryEnrolled: !!fingerprint
+        biometryAvailable: !!vaultStatus.isBiometryAvailable,
+        biometryEnrolled: !!vaultStatus.biometryEnrolled
       });
       syncTabs("biometry");
     })();
-  }, [tab?.id]);
+  }, [tab?.id, vaultStatus.biometryEnrolled, vaultStatus.isBiometryAvailable]);
 
   useEffect(() => {
     const unlockWithBiometrics = async () => {
       try {
         if (!tabRef.current?.session?.noteLocked || !tabRef.current) return;
-        console.log("Trying to unlock with biometrics...");
         const credentials = await BiometricService.getCredentials(
           "Unlock note",
           "Unlock note to open it in editor."
@@ -320,12 +320,16 @@ const useLockedNoteHandler = () => {
       }
     };
 
-    const unlock = () => {
+    const unlock = (forced?: boolean) => {
+      const isMovedAway =
+        useSettingStore.getState().deviceMode !== "mobile"
+          ? false
+          : editorState().movedAway;
       if (
-        (tabRef.current?.session?.locked,
+        tabRef.current?.session?.locked &&
         useTabStore.getState().biometryAvailable &&
-          useTabStore.getState().biometryEnrolled &&
-          !editorState().movedAway)
+        useTabStore.getState().biometryEnrolled &&
+        (!isMovedAway || forced)
       ) {
         setTimeout(() => {
           unlockWithBiometrics();
@@ -344,11 +348,16 @@ const useLockedNoteHandler = () => {
     const subs = [
       eSubscribeEvent(eUnlockNote, unlock),
       eSubscribeEvent(eUnlockWithBiometrics, () => {
-        unlock();
+        unlock(true);
       }),
       eSubscribeEvent(eUnlockWithPassword, onSubmit)
     ];
-    if (tabRef.current?.session?.locked && tabBarRef.current?.page() === 2) {
+
+    if (
+      tabRef.current?.session?.locked &&
+      (fluidTabsRef.current?.page() === "editor" ||
+        useSettingStore.getState().deviceMode !== "mobile")
+    ) {
       unlock();
     }
     return () => {

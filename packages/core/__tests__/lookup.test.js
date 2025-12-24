@@ -58,6 +58,19 @@ test("search notes (remove diacritics)", () =>
     expect(filtered).toHaveLength(1);
   }));
 
+test("search notes (remove html tags)", () =>
+  noteTest({
+    content: {
+      type: "tiptap",
+      data: "<p block-id='1'>hello this is a word</p>"
+    }
+  }).then(async ({ db }) => {
+    await db.notes.add(TEST_NOTE);
+    expect(await db.lookup.notes("block").ids()).toHaveLength(0);
+    expect(await db.lookup.notes("hello").ids()).toHaveLength(2);
+    expect(await db.lookup.notes("word").ids()).toHaveLength(1);
+  }));
+
 test("search notes with a locked note", () =>
   noteTest({
     content: content
@@ -126,3 +139,18 @@ test("search reminders", () =>
     const descriptionSearch = await db.lookup.reminders("please do").ids();
     expect(descriptionSearch).toHaveLength(1);
   }));
+
+describe("notesWithHighlighting", () => {
+  test("search notes with parentheses in query should load the item", () =>
+    noteTest({
+      title: "(with parantheses)"
+    }).then(async ({ db }) => {
+      await db.notes.add(TEST_NOTE);
+      const filtered = await db.lookup.notesWithHighlighting(
+        "(with parantheses)",
+        db.notes.all
+      );
+      const item = await filtered.item(0);
+      expect(item.item).toBeDefined();
+    }));
+});

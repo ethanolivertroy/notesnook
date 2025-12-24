@@ -85,6 +85,9 @@ import { DiffHighlighter } from "./extensions/diff-highlighter/index.js";
 import { getChangedNodes } from "./utils/prosemirror.js";
 import { strings } from "@notesnook/intl";
 import { InlineCode } from "./extensions/inline-code/inline-code.js";
+import { FontLigature } from "./extensions/font-ligature/font-ligature.js";
+import { SearchResult } from "./extensions/search-result/search-result.js";
+import "simplebar-react/dist/simplebar.min.css";
 
 interface TiptapStorage {
   dateFormat?: DateTimeOptions["dateFormat"];
@@ -127,6 +130,7 @@ export type TiptapOptions = EditorOptions &
     downloadOptions?: DownloadOptions;
     isMobile?: boolean;
     doubleSpacedLines?: boolean;
+    enableFontLigatures?: boolean;
   } & {
     placeholder: string;
   };
@@ -151,6 +155,7 @@ const useTiptap = (
     isMobile,
     downloadOptions,
     editorProps,
+    enableFontLigatures,
     ...restOptions
   } = options;
 
@@ -186,11 +191,12 @@ const useTiptap = (
       extensions: [
         ...CoreExtensions,
         SearchReplace.configure({
-          onStartSearch: (term) => {
+          onStartSearch: (term, isReplacing) => {
             useEditorSearchStore.setState({
               isSearching: true,
               searchTerm: term,
-              focusNonce: Math.random()
+              focusNonce: Math.random(),
+              isReplacing: isReplacing
             });
             return true;
           },
@@ -233,7 +239,8 @@ const useTiptap = (
             newGroupDelay: 1000
           },
           dropcursor: {
-            class: "drop-cursor"
+            class: "drop-cursor",
+            width: 3
           },
           horizontalRule: false
         }),
@@ -279,7 +286,11 @@ const useTiptap = (
         Table.configure({
           resizable: true,
           allowTableNodeSelection: true,
-          cellMinWidth: 50
+          cellMinWidth: 20,
+          showResizeHandleOnSelection: isMobile,
+          defaultCellAttrs: {
+            colwidth: [100]
+          }
         }),
         Clipboard,
         TableRow,
@@ -326,7 +337,9 @@ const useTiptap = (
           irremovableNodesOnBackspace: [
             CodeBlock.name,
             TaskListNode.name,
-            Table.name
+            Table.name,
+            CheckList.name,
+            AttachmentNode.name
           ],
           escapableNodesIfAtDocumentStart: [
             CodeBlock.name,
@@ -355,7 +368,9 @@ const useTiptap = (
               wrapperNames: [CheckList.name]
             }
           ]
-        })
+        }),
+        FontLigature.configure({ enabled: enableFontLigatures }),
+        SearchResult.configure()
       ],
       onBeforeCreate: ({ editor }) => {
         editor.storage.dateFormat = dateFormat;
@@ -375,6 +390,7 @@ const useTiptap = (
       parseOptions: { preserveWhitespace: true }
     }),
     [
+      isMobile,
       previewAttachment,
       downloadAttachment,
       openAttachmentPicker,
@@ -429,3 +445,4 @@ export {
 };
 export { replaceDateTime } from "./extensions/date-time/index.js";
 export type * from "./extension-imports.js";
+export { type Selection } from "@tiptap/pm/state";

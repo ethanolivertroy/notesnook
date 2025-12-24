@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import { LegendList } from "@legendapp/list";
 import {
   Attachment,
   FilteredSelector,
@@ -28,17 +29,17 @@ import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { FlashList } from "react-native-actions-sheet/dist/src/views/FlashList";
-import { ScrollView } from "react-native-gesture-handler";
+import { ScrollView } from "react-native-actions-sheet";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import create, { State } from "zustand";
+import create from "zustand";
 import { db } from "../../common/database";
 import filesystem from "../../common/filesystem";
 import { downloadAttachments } from "../../common/filesystem/download-attachment";
 import { AttachmentGroupProgress } from "../../screens/settings/attachment-group-progress";
 import { presentSheet, ToastManager } from "../../services/event-manager";
 import { useAttachmentStore } from "../../stores/use-attachment-store";
-import { SIZE } from "../../utils/size";
+import { AppFontSize } from "../../utils/size";
+import { DefaultAppStyles } from "../../utils/styles";
 import { Dialog } from "../dialog";
 import { presentDialog } from "../dialog/functions";
 import { Header } from "../header";
@@ -64,7 +65,7 @@ type RecheckerProgress = {
   filter: string;
 };
 
-interface RecheckerState extends State {
+interface RecheckerState {
   progress: {
     [key: string]: RecheckerProgress;
   };
@@ -134,9 +135,9 @@ export const AttachmentDialog = ({
   const { colors } = useThemeColors();
   const [attachments, setAttachments] =
     useState<VirtualizedGrouping<Attachment>>();
-  const attachmentSearchValue = useRef<string>();
+  const attachmentSearchValue = useRef<string>(undefined);
   const [loading, setLoading] = useState(true);
-  const searchTimer = useRef<NodeJS.Timeout>();
+  const searchTimer = useRef<NodeJS.Timeout>(undefined);
   const [currentFilter, setCurrentFilter] = useState("all");
   const rechecker = useRechecker((state) =>
     note ? state.progress[note.id] || {} : state.progress.all
@@ -198,7 +199,7 @@ export const AttachmentDialog = ({
     }, 300);
   };
 
-  const renderItem = ({ index }: { item: boolean; index: number }) => (
+  const renderItem = ({ index }: { item: boolean | number; index: number }) => (
     <AttachmentItem
       setAttachments={async () => {
         setAttachments(await filterAttachments(currentFilter));
@@ -325,30 +326,6 @@ export const AttachmentDialog = ({
           title={strings.manageAttachments()}
           renderedInRoute="SettingsGroup"
           canGoBack
-          headerRightButtons={[
-            {
-              onPress() {
-                onCheck();
-              },
-              title: strings.recheckAll()
-            },
-            {
-              onPress() {
-                if (!attachments) return;
-                presentDialog({
-                  title: strings.doActions.download.attachment(
-                    attachments.placeholders.length
-                  ),
-                  positiveText: strings.network.download(),
-                  positivePress: async () => {
-                    downloadAttachments(await attachments.ids());
-                  },
-                  negativeText: strings.cancel()
-                });
-              },
-              title: strings.downloadAllAttachments()
-            }
-          ]}
         />
       ) : (
         <View
@@ -356,7 +333,7 @@ export const AttachmentDialog = ({
             flexDirection: "row",
             justifyContent: "space-between",
             alignItems: "center",
-            paddingHorizontal: 12
+            paddingHorizontal: DefaultAppStyles.GAP
           }}
         >
           <Heading>{strings.dataTypesPluralCamelCase.attachment()}</Heading>
@@ -369,21 +346,15 @@ export const AttachmentDialog = ({
             <IconButton
               name="check-all"
               style={{
-                height: 40,
-                width: 40,
                 marginRight: 10
               }}
               color={colors.primary.paragraph}
-              size={SIZE.lg}
+              size={AppFontSize.lg}
               onPress={onCheck}
             />
 
             <IconButton
               name="download"
-              style={{
-                height: 40,
-                width: 40
-              }}
               color={colors.primary.paragraph}
               onPress={() => {
                 if (!attachments) return;
@@ -398,7 +369,7 @@ export const AttachmentDialog = ({
                   negativeText: strings.cancel()
                 });
               }}
-              size={SIZE.lg}
+              size={AppFontSize.lg}
             />
           </View>
         </View>
@@ -408,7 +379,7 @@ export const AttachmentDialog = ({
         style={{
           width: "100%",
           alignSelf: "center",
-          paddingHorizontal: 12,
+          paddingHorizontal: DefaultAppStyles.GAP,
           height: "100%"
         }}
       >
@@ -428,7 +399,7 @@ export const AttachmentDialog = ({
               alignItems: "center",
               width: "100%",
               borderRadius: 10,
-              padding: 10,
+              padding: DefaultAppStyles.GAP_SMALL,
               borderWidth: 1,
               borderColor: colors.primary.border,
               gap: 12,
@@ -473,7 +444,7 @@ export const AttachmentDialog = ({
             <IconButton
               type={rechecker.isWorking ? "errorShade" : "plain"}
               name={rechecker.isWorking ? "close" : "check"}
-              size={SIZE.lg}
+              size={AppFontSize.lg}
               color={
                 rechecker.isWorking ? colors.error.icon : colors.primary.accent
               }
@@ -494,7 +465,7 @@ export const AttachmentDialog = ({
               backgroundColor: colors.primary.background,
               flexWrap: "wrap",
               flexDirection: "row",
-              paddingVertical: 12
+              paddingVertical: DefaultAppStyles.GAP_VERTICAL
             }}
             contentContainerStyle={{
               alignItems: "center"
@@ -511,10 +482,10 @@ export const AttachmentDialog = ({
                   }
                   key={item.title}
                   title={item.title}
-                  fontSize={SIZE.sm}
+                  fontSize={AppFontSize.sm}
                   style={{
                     borderRadius: 100,
-                    paddingHorizontal: 12,
+                    paddingHorizontal: DefaultAppStyles.GAP,
                     height: 40,
                     minWidth: 80
                   }}
@@ -538,7 +509,8 @@ export const AttachmentDialog = ({
           </ScrollView>
         </View>
 
-        <FlashList
+        <LegendList
+          renderScrollComponent={(props) => <ScrollView {...props} />}
           keyboardDismissMode="none"
           keyboardShouldPersistTaps="always"
           ListEmptyComponent={
@@ -572,7 +544,8 @@ export const AttachmentDialog = ({
             />
           }
           estimatedItemSize={50}
-          data={loading ? [] : attachments?.placeholders}
+          data={loading ? [] : attachments?.placeholders || []}
+          extraData={attachments}
           renderItem={renderItem}
         />
       </View>
